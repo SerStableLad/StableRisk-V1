@@ -1,0 +1,101 @@
+version: '3.8'
+
+services:
+  # StableRisk Backend API
+  backend:
+    build: .
+    container_name: stablerisk-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://stablerisk:stablerisk123@postgres:5432/stablerisk_db
+      - REDIS_URL=redis://redis:6379
+      - DEBUG=true
+      - LOG_LEVEL=INFO
+    env_file:
+      - .env
+    depends_on:
+      - postgres
+      - redis
+    restart: unless-stopped
+    volumes:
+      - ./backend:/app/backend
+      - ./config:/app/config
+    networks:
+      - stablerisk-network
+
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: stablerisk-postgres
+    environment:
+      - POSTGRES_DB=stablerisk_db
+      - POSTGRES_USER=stablerisk
+      - POSTGRES_PASSWORD=stablerisk123
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    restart: unless-stopped
+    networks:
+      - stablerisk-network
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: stablerisk-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    networks:
+      - stablerisk-network
+
+  # Celery Worker (for background tasks)
+  celery-worker:
+    build: .
+    container_name: stablerisk-celery-worker
+    command: celery -A backend.core.celery worker --loglevel=info
+    environment:
+      - DATABASE_URL=postgresql://stablerisk:stablerisk123@postgres:5432/stablerisk_db
+      - REDIS_URL=redis://redis:6379
+    env_file:
+      - .env
+    depends_on:
+      - postgres
+      - redis
+    restart: unless-stopped
+    volumes:
+      - ./backend:/app/backend
+      - ./config:/app/config
+    networks:
+      - stablerisk-network
+
+  # Flower (Celery monitoring - optional)
+  flower:
+    build: .
+    container_name: stablerisk-flower
+    command: celery -A backend.core.celery flower --port=5555
+    ports:
+      - "5555:5555"
+    environment:
+      - DATABASE_URL=postgresql://stablerisk:stablerisk123@postgres:5432/stablerisk_db
+      - REDIS_URL=redis://redis:6379
+    env_file:
+      - .env
+    depends_on:
+      - redis
+    restart: unless-stopped
+    networks:
+      - stablerisk-network
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  stablerisk-network:
+    driver: bridge 

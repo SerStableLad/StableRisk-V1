@@ -1,0 +1,62 @@
+version: '3.8'
+
+services:
+  # Development Backend with hot reload
+  backend:
+    build: .
+    container_name: stablerisk-backend-dev
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://stablerisk:stablerisk123@postgres:5432/stablerisk_db
+      - REDIS_URL=redis://redis:6379
+      - DEBUG=true
+      - LOG_LEVEL=DEBUG
+    env_file:
+      - .env
+    depends_on:
+      - postgres
+      - redis
+    restart: unless-stopped
+    volumes:
+      - .:/app  # Mount entire project for hot reload
+    command: ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    networks:
+      - stablerisk-network
+
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: stablerisk-postgres-dev
+    environment:
+      - POSTGRES_DB=stablerisk_db
+      - POSTGRES_USER=stablerisk
+      - POSTGRES_PASSWORD=stablerisk123
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_dev_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    networks:
+      - stablerisk-network
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: stablerisk-redis-dev
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_dev_data:/data
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    networks:
+      - stablerisk-network
+
+volumes:
+  postgres_dev_data:
+  redis_dev_data:
+
+networks:
+  stablerisk-network:
+    driver: bridge 
