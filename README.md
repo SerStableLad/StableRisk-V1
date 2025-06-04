@@ -105,7 +105,7 @@ Stablerisk-cursor-newframework/
 - `GET /api/v1/coins/price-analysis/{coin_id}` - Depeg detection
 - `GET /api/v1/coins/stablecoin-search/{ticker}` - One-call stablecoin analysis
 
-## 📊 Supported Stablecoins
+## 📊 Supported Stablecoins (mock data, to be replace with ai agents querying data in realtime)
 
 | Stablecoin | Ticker | Market Cap | Full Analysis |
 |------------|--------|------------|---------------|
