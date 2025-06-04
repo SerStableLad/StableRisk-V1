@@ -68,6 +68,40 @@ docker-compose up --build -d
 - **Port**: 5555
 - Celery task monitoring interface
 
+## 🧪 Testing
+
+The test suite is organized in the `tests/` directory:
+
+```bash
+tests/
+├── __init__.py                    # Test package initialization
+├── test_apis.py                   # API connection and external service tests
+├── test_enhanced_liquidity.py     # Comprehensive liquidity analysis tests
+└── test_phase2_functionality.py  # Phase 2 feature validation tests
+```
+
+### Running Tests
+
+```bash
+# Run API connection tests
+python tests/test_apis.py
+
+# Run enhanced liquidity framework tests
+python tests/test_enhanced_liquidity.py
+
+# Run Phase 2 functionality tests
+python tests/test_phase2_functionality.py
+
+# Run tests in Docker environment
+docker-compose exec backend python tests/test_apis.py
+```
+
+### Test Coverage
+
+- **API Tests**: Validates connectivity to CoinGecko, GitHub, DeFiLlama, GeckoTerminal
+- **Liquidity Tests**: Tests comprehensive multi-chain analysis and scoring
+- **Phase 2 Tests**: Validates ticker search, metadata retrieval, and price analysis
+
 ## 🔧 Configuration
 
 ### Environment Variables
