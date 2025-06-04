@@ -36,6 +36,8 @@ class RiskFactorResponse(BaseModel):
     description: str
     data_available: bool
     confidence: float
+    source: str
+    provider: str
 
 
 class RiskAssessmentResponse(BaseModel):
@@ -50,10 +52,9 @@ class RiskAssessmentResponse(BaseModel):
     # Individual risk factors
     price_stability: RiskFactorResponse
     liquidity_risk: RiskFactorResponse
-    security_risk: RiskFactorResponse
     oracle_risk: RiskFactorResponse
     audit_risk: RiskFactorResponse
-    centralization_risk: RiskFactorResponse
+    reserve_transparency: RiskFactorResponse
     
     # Supporting data
     market_cap_usd: Optional[float]
@@ -77,12 +78,11 @@ async def get_comprehensive_risk_assessment(coin_id: str):
     Get comprehensive risk assessment for a stablecoin
     
     **Combines all data sources into a single risk score:**
-    - Price stability analysis (25% weight)
-    - Liquidity risk assessment (20% weight)
-    - Security analysis from GitHub (15% weight)
-    - Oracle infrastructure risk (15% weight)
+    - Price stability analysis (30% weight)
+    - Liquidity risk assessment (25% weight)
+    - Oracle infrastructure risk (20% weight)
     - Audit coverage analysis (15% weight)
-    - Centralization risk (10% weight)
+    - Reserve transparency (10% weight)
     
     **Features:**
     - 0-10 risk scoring (10 = lowest risk)
@@ -116,7 +116,9 @@ async def get_comprehensive_risk_assessment(coin_id: str):
                 weight=factor.weight,
                 description=factor.description,
                 data_available=factor.data_available,
-                confidence=factor.confidence
+                confidence=factor.confidence,
+                source=factor.source,
+                provider=factor.provider
             )
         
         return RiskAssessmentResponse(
@@ -128,10 +130,9 @@ async def get_comprehensive_risk_assessment(coin_id: str):
             confidence_score=assessment.confidence_score,
             price_stability=factor_to_response(assessment.price_stability),
             liquidity_risk=factor_to_response(assessment.liquidity_risk),
-            security_risk=factor_to_response(assessment.security_risk),
             oracle_risk=factor_to_response(assessment.oracle_risk),
             audit_risk=factor_to_response(assessment.audit_risk),
-            centralization_risk=factor_to_response(assessment.centralization_risk),
+            reserve_transparency=factor_to_response(assessment.reserve_transparency),
             market_cap_usd=assessment.market_cap_usd,
             last_updated=assessment.last_updated.isoformat(),
             data_freshness={k: v.isoformat() for k, v in assessment.data_freshness.items()},
@@ -215,10 +216,9 @@ async def get_risk_summary(coin_id: str):
         risk_factors = [
             assessment.price_stability,
             assessment.liquidity_risk,
-            assessment.security_risk,
             assessment.oracle_risk,
             assessment.audit_risk,
-            assessment.centralization_risk
+            assessment.reserve_transparency
         ]
         
         top_risks = sorted(
@@ -281,10 +281,9 @@ async def get_risk_factors_breakdown(coin_id: str):
         factors = [
             assessment.price_stability,
             assessment.liquidity_risk,
-            assessment.security_risk,
             assessment.oracle_risk,
             assessment.audit_risk,
-            assessment.centralization_risk
+            assessment.reserve_transparency
         ]
         
         return {
@@ -335,10 +334,9 @@ async def risk_service_health():
             "risk_factors": {
                 "price_stability": f"{risk_service.risk_weights['price_stability']*100:.0f}%",
                 "liquidity_risk": f"{risk_service.risk_weights['liquidity_risk']*100:.0f}%",
-                "security_risk": f"{risk_service.risk_weights['security_risk']*100:.0f}%",
                 "oracle_risk": f"{risk_service.risk_weights['oracle_risk']*100:.0f}%",
                 "audit_risk": f"{risk_service.risk_weights['audit_risk']*100:.0f}%",
-                "centralization_risk": f"{risk_service.risk_weights['centralization_risk']*100:.0f}%"
+                "reserve_transparency": f"{risk_service.risk_weights['reserve_transparency']*100:.0f}%"
             },
             "risk_levels": {
                 "very_low": "8.5-10.0",
@@ -378,10 +376,9 @@ async def get_risk_model_weights():
         "factor_descriptions": {
             "price_stability": "Historical peg deviation analysis and stability metrics",
             "liquidity_risk": "Multi-chain liquidity depth and concentration analysis",
-            "security_risk": "GitHub repository security score and development activity",
             "oracle_risk": "Price feed infrastructure and decentralization assessment",
             "audit_risk": "Security audit coverage and auditor reputation",
-            "centralization_risk": "Governance structure and control mechanisms"
+            "reserve_transparency": "Reserve transparency and governance structure"
         },
         "confidence_factors": {
             "data_availability": "Whether required data sources are accessible",

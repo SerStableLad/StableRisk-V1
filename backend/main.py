@@ -1,14 +1,20 @@
 """
-StableRisk Backend - Main FastAPI Application
-Entry point for the StableRisk API server
+StableRisk V1 - Main FastAPI Application
+Complete risk assessment platform for stablecoins
+Author: VibeCoding
+Version: 2.1.0 (Phase 2.1 Complete)
 """
 
-from fastapi import FastAPI, HTTPException
+import logging
+import structlog
+from datetime import datetime
+from typing import Dict, Optional, List
+
+# FastAPI imports
+from fastapi import FastAPI, HTTPException, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import uvicorn
-import logging
-from datetime import datetime
 
 # Import configuration
 import sys
@@ -20,12 +26,12 @@ from config.api_keys import api_settings
 from backend.services.cache_service import cache_service
 from backend.middleware.rate_limiter import RateLimitMiddleware
 
-# Import API routers
-from api.v1.coins import router as coins_router
-from api.v1.liquidity import router as liquidity_router
-from api.github_routes import router as github_router
-from api.risk_routes import router as risk_router
-from api.cache_routes import router as cache_router
+# Import API routers with correct paths
+from backend.api.v1.coins import router as coins_router
+from backend.api.v1.liquidity import router as liquidity_router
+from backend.api.github_routes import router as github_router
+from backend.api.risk_routes import router as risk_router
+from backend.api.cache_routes import router as cache_router
 
 # Import new Phase 2.1 API routes
 from backend.api.pegging_routes import router as pegging_router

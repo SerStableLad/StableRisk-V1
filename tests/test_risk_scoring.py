@@ -99,12 +99,11 @@ async def test_risk_scoring_service():
     from backend.services.risk_scoring_service import RiskFactor
     
     mock_factors = [
-        RiskFactor("Price Stability", 8.0, 0.25, "Good stability", True, 0.9),
-        RiskFactor("Liquidity Risk", 7.0, 0.20, "Adequate liquidity", True, 0.8),
-        RiskFactor("Security Risk", 6.0, 0.15, "Some security concerns", True, 0.7),
-        RiskFactor("Oracle Risk", 5.0, 0.15, "Unknown oracle setup", False, 0.3),
+        RiskFactor("Price Stability", 8.0, 0.30, "Good stability", True, 0.9),
+        RiskFactor("Liquidity Risk", 7.0, 0.25, "Adequate liquidity", True, 0.8),
+        RiskFactor("Oracle Risk", 5.0, 0.20, "Unknown oracle setup", False, 0.3),
         RiskFactor("Audit Risk", 9.0, 0.15, "Well audited", True, 0.8),
-        RiskFactor("Centralization Risk", 6.0, 0.10, "Moderate centralization", True, 0.5)
+        RiskFactor("Reserve Transparency", 6.0, 0.10, "Moderate transparency", True, 0.5)
     ]
     
     overall_score, confidence = service._calculate_overall_score(mock_factors)
@@ -143,10 +142,9 @@ async def test_risk_scoring_service():
             factors = [
                 assessment.price_stability,
                 assessment.liquidity_risk,
-                assessment.security_risk,
                 assessment.oracle_risk,
                 assessment.audit_risk,
-                assessment.centralization_risk
+                assessment.reserve_transparency
             ]
             
             print("     Risk Factors:")
@@ -167,7 +165,7 @@ async def test_risk_scoring_service():
             assert 0 <= assessment.overall_score <= 10, "Overall score invalid"
             assert assessment.risk_level in RiskLevel, "Risk level invalid"
             assert 0 <= assessment.confidence_score <= 1, "Confidence invalid"
-            assert len(factors) == 6, "Should have 6 risk factors"
+            assert len(factors) == 5, "Should have 5 risk factors"
             
             print("   ✅ Full risk assessment working correctly")
             
@@ -213,7 +211,7 @@ async def test_risk_scoring_service():
     print("   • Risk comparison: ✅ (depends on APIs)")
     print("\n🎯 Risk Scoring Service is ready for production!")
     print("\n🔧 Risk Model Summary:")
-    print("   • 6 risk factors with scientifically weighted scoring")
+    print("   • 5 risk factors with scientifically weighted scoring")
     print("   • 0-10 scale (10 = lowest risk)")
     print("   • 6 risk levels from Very Low to Critical")
     print("   • Confidence scoring based on data availability")

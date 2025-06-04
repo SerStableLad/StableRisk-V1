@@ -60,7 +60,7 @@ class CacheService:
         self.rate_limits = {
             'api_calls_per_ip': {'limit': 100, 'window': 3600},      # 100 per hour
             'risk_assessments_per_ip': {'limit': 20, 'window': 3600}, # 20 per hour
-            'heavy_operations_per_ip': {'limit': 5, 'window': 3600}   # 5 per hour
+            'heavy_operations_per_ip': {'limit': 50, 'window': 3600}   # 50 per hour
         }
         
     async def initialize(self):
