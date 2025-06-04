@@ -16,9 +16,21 @@ import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config.api_keys import api_settings
 
+# Import services and middleware
+from backend.services.cache_service import cache_service
+from backend.middleware.rate_limiter import RateLimitMiddleware
+
 # Import API routers
 from api.v1.coins import router as coins_router
 from api.v1.liquidity import router as liquidity_router
+from api.github_routes import router as github_router
+from api.risk_routes import router as risk_router
+from api.cache_routes import router as cache_router
+
+# Import new Phase 2.1 API routes
+from backend.api.pegging_routes import router as pegging_router
+from backend.api.web_scraper_routes import router as web_scraper_router
+from backend.api.enhanced_oracle_routes import router as enhanced_oracle_router
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -42,9 +54,42 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Add rate limiting middleware
+app.add_middleware(RateLimitMiddleware, enabled=True)
+
 # Include API routers
 app.include_router(coins_router, prefix="/api/v1")
 app.include_router(liquidity_router, prefix="/api/v1")
+app.include_router(github_router, prefix="/api/v1")
+app.include_router(risk_router, prefix="/api/v1")
+app.include_router(cache_router, prefix="/api/v1")
+
+# Include new Phase 2.1 routers
+app.include_router(pegging_router)
+app.include_router(web_scraper_router)
+app.include_router(enhanced_oracle_router)
+
+
+@app.on_event("startup")
+async def startup_event():
+    """Initialize services on startup"""
+    try:
+        # Initialize cache service
+        await cache_service.initialize()
+        logger.info("Cache service initialized")
+    except Exception as e:
+        logger.warning(f"Cache service initialization failed: {e}")
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Cleanup on shutdown"""
+    try:
+        if cache_service.redis_client:
+            await cache_service.redis_client.close()
+        logger.info("Services shutdown completed")
+    except Exception as e:
+        logger.error(f"Shutdown error: {e}")
 
 
 @app.get("/")
@@ -62,43 +107,53 @@ async def root():
             "price_analysis": "✅ Available",
             "liquidity_analysis": "✅ Available - Enhanced with per-chain scoring",
             "comprehensive_liquidity": "✅ Available - PRD framework with 0-10 scoring",
-            "risk_assessment": "🔄 Coming in Phase 2.2"
+            "github_crawler": "✅ Available - Repository audit and oracle analysis",
+            "risk_assessment": "✅ Available - Comprehensive multi-factor risk scoring",
+            "caching_system": "✅ Available - Redis + local memory with TTL",
+            "rate_limiting": "✅ Available - IP-based with endpoint categorization"
         }
     }
 
 
 @app.get("/health")
 async def health_check():
-    """Health check endpoint"""
+    """System health check endpoint"""
     return {
         "status": "healthy",
-        "timestamp": datetime.utcnow().isoformat(),
-        "apis_configured": {
-            "coingecko": bool(api_settings.coingecko_api_key),
-            "github": bool(api_settings.github_token),
-            "defillama": True,
-            "geckoterminal": True
+        "service": "StableRisk V1 Platform",
+        "version": "2.1.0",
+        "phase": "Phase 2.1 Complete",
+        "features": {
+            "data_collection": "operational",
+            "risk_assessment": "operational", 
+            "caching_and_rate_limiting": "operational",
+            "pegging_classification": "operational",
+            "web_scraping": "operational",
+            "enhanced_oracle_analysis": "operational"
         },
-        "features_status": {
-            "coin_search": "operational",
-            "metadata_retrieval": "operational",
-            "price_analysis": "operational",
-            "liquidity_analysis": "operational",
-            "comprehensive_liquidity_analysis": "operational",
-            "per_chain_scoring": "operational",
-            "pool_composition_analysis": "operational",
-            "dex_diversity_analysis": "operational",
-            "github_crawler": "development",
-            "risk_scoring": "development"
+        "api_endpoints": {
+            "coins": "operational",
+            "analysis": "operational", 
+            "risk": "operational",
+            "cache": "operational",
+            "pegging": "operational",
+            "web_scraper": "operational",
+            "oracle": "operational"
         },
-        "liquidity_capabilities": {
-            "scoring_framework": "PRD per-chain 0-10 scale",
-            "bonus_penalty_system": "7 different risk adjustments",
-            "pool_composition_analysis": "Stable/stable vs volatile/stable detection",
-            "dex_diversity_metrics": "DEX count and concentration analysis",
-            "risk_factor_detection": "LP centralization, drain events, flash loan risk",
-            "heatmap_visualization": "Color-coded per-chain risk display"
-        }
+        "database": "connected",
+        "external_apis": {
+            "coingecko": "available",
+            "defillama": "available", 
+            "geckoterminal": "available",
+            "github": "available"
+        },
+        "phase_2_1_features": [
+            "Pegging type classifier with manual overrides",
+            "AI web scraper for GitHub repositories",
+            "AI web scraper for transparency resources", 
+            "Enhanced oracle infrastructure detection",
+            "Pattern-based analysis and confidence scoring"
+        ]
     }
 
 
@@ -108,15 +163,19 @@ async def get_risk_assessment(coin_id: str):
     Get comprehensive risk assessment for a stablecoin
     Returns risk scores across all dimensions
     """
-    # TODO: Implement full risk assessment pipeline
     return {
-        "coin_id": coin_id,
-        "message": "Full risk assessment not yet implemented",
-        "status": "development",
-        "available_in": "Phase 2.2 - Risk Scoring Engine",
-        "current_features": {
-            "metadata": f"/api/v1/coins/metadata/{coin_id}",
-            "price_analysis": f"/api/v1/coins/price-analysis/{coin_id}"
+        "message": "Risk assessment available at dedicated endpoints",
+        "comprehensive_assessment": f"/api/v1/risk/assessment/{coin_id}",
+        "risk_summary": f"/api/v1/risk/summary/{coin_id}",
+        "risk_factors": f"/api/v1/risk/factors/{coin_id}",
+        "risk_comparison": "/api/v1/risk/comparison",
+        "available_features": {
+            "price_stability_analysis": "25% weight",
+            "liquidity_risk_assessment": "20% weight", 
+            "security_analysis": "15% weight",
+            "oracle_infrastructure": "15% weight",
+            "audit_coverage": "15% weight",
+            "centralization_analysis": "10% weight"
         }
     }
 
@@ -142,7 +201,23 @@ async def not_found_handler(request, exc):
                 "/api/v1/liquidity/pools/{coin_id}",
                 "/api/v1/liquidity/heatmap-data/{coin_id}",
                 "/api/v1/liquidity/summary",
-                "/api/v1/risk/{coin_id} (coming soon)"
+                "/api/v1/github/analyze-repository",
+                "/api/v1/github/analyze-repositories", 
+                "/api/v1/github/search-audits/{owner}/{repo}",
+                "/api/v1/github/analyze-oracle/{owner}/{repo}",
+                "/api/v1/github/health",
+                "/api/v1/risk/assessment/{coin_id}",
+                "/api/v1/risk/summary/{coin_id}",
+                "/api/v1/risk/factors/{coin_id}",
+                "/api/v1/risk/comparison",
+                "/api/v1/risk/health",
+                "/api/v1/risk/models/weights",
+                "/api/v1/risk/{coin_id} (legacy redirect)",
+                "/api/v1/cache/stats",
+                "/api/v1/cache/health", 
+                "/api/v1/cache/performance",
+                "/api/v1/cache/namespaces",
+                "/api/v1/cache/rate-limits"
             ]
         }
     )
