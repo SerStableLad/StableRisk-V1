@@ -13,6 +13,35 @@ export interface StablecoinInfo {
   description?: string
 }
 
+// Depeg event information
+export interface DepegEvent {
+  timestamp: string
+  price: number
+  deviation_percent: number
+  duration_hours?: number
+  recovered: boolean
+}
+
+// Individual price data point for charting
+export interface PricePoint {
+  timestamp: string
+  price: number
+  deviation_percent: number
+}
+
+// Price peg stability analysis from backend
+export interface PegAnalysis {
+  target_peg: number
+  current_price: number
+  current_deviation: number
+  max_deviation_7d: number
+  max_deviation_30d: number
+  max_deviation_1y: number
+  depeg_events: DepegEvent[]
+  avg_recovery_time_hours?: number
+  price_history: PricePoint[]
+}
+
 // Risk factor scores
 export interface RiskFactors {
   price_stability: number
@@ -61,6 +90,14 @@ export interface AuditInfo {
   critical_issues: number
   resolved_issues: number
   outstanding_issues: number
+  critical_issues_summary?: string[]
+  outstanding_issues_summary?: string[]
+  severity_breakdown?: {
+    critical: number
+    high: number
+    medium: number
+    low: number
+  }
 }
 
 // Transparency dashboard data
@@ -71,6 +108,72 @@ export interface TransparencyData {
   total_reserves?: number
   reserve_ratio?: number
   dashboard_url?: string
+  
+  // Enhanced reserve transparency details
+  reserve_backing?: ReserveBackingInfo
+  attestation_details?: AttestationInfo
+  custody_info?: CustodyInfo
+  transparency_score?: number
+  report_frequency_details?: ReportFrequencyInfo
+}
+
+// Reserve backing composition
+export interface ReserveBackingInfo {
+  composition: ReserveComponent[]
+  last_verification_date: string
+  backing_type: 'Fiat-Backed' | 'Crypto-Backed' | 'Commodity-Backed' | 'Mixed-Collateral' | 'Algorithmic'
+  overcollateralization_ratio?: number
+  geographical_distribution?: string[]
+}
+
+// Individual reserve components
+export interface ReserveComponent {
+  asset_type: string  // e.g., "US Dollars", "US Treasury Bills", "Ethereum", "Bitcoin"
+  percentage: number  // Percentage of total reserves
+  amount_usd?: number  // USD value
+  custody_location?: string
+  verification_method: 'Third-party audit' | 'On-chain verification' | 'Bank attestation' | 'Self-reported'
+}
+
+// Third-party attestation information
+export interface AttestationInfo {
+  primary_verifier: string  // e.g., "Grant Thornton LLP", "BDO Italia", "Armanino LLP"
+  verifier_type: 'Big 4 Accounting' | 'Regional Accounting' | 'Specialized Auditor' | 'Legal Firm' | 'Internal'
+  attestation_type: 'Full Audit' | 'Review' | 'Agreed-Upon Procedures' | 'Compilation'
+  last_attestation_date: string
+  next_scheduled_date?: string
+  attestation_scope: string[]  // e.g., ["Reserve composition", "Bank balances", "Custodial holdings"]
+  regulatory_compliance?: string[]  // e.g., ["SOX", "PCAOB", "AICPA"]
+  report_url?: string
+}
+
+// Custody information
+export interface CustodyInfo {
+  custodians: CustodianInfo[]
+  custody_model: 'Self-Custody' | 'Third-Party Custody' | 'Mixed Custody' | 'Decentralized'
+  insurance_coverage?: number  // USD amount
+  insurance_provider?: string
+  regulatory_oversight?: string[]
+}
+
+// Individual custodian details
+export interface CustodianInfo {
+  name: string
+  type: 'Traditional Bank' | 'Digital Asset Custodian' | 'Prime Brokerage' | 'Insurance Company' | 'Trust Company'
+  jurisdiction: string
+  assets_held: string[]  // Types of assets they custody
+  percentage_of_reserves?: number
+  regulatory_status: string  // e.g., "FDIC Insured", "CFTC Registered", "SEC Registered"
+  insurance_coverage?: number
+}
+
+// Report frequency details
+export interface ReportFrequencyInfo {
+  frequency: 'Real-time' | 'Daily' | 'Weekly' | 'Monthly' | 'Quarterly' | 'Annually' | 'Irregular'
+  last_update_time: string
+  update_consistency: 'Very Consistent' | 'Consistent' | 'Irregular' | 'Unreliable'
+  automated_reporting: boolean
+  transparency_grade: 'A+' | 'A' | 'B+' | 'B' | 'C+' | 'C' | 'D' | 'F'
 }
 
 // Oracle infrastructure
@@ -80,6 +183,10 @@ export interface OracleInfo {
   update_interval?: string
   centralization_risk: number
   reliability_score: number
+  // Enhanced oracle data
+  oracle_types_available?: Record<string, any>
+  risk_levels_info?: Record<string, string>
+  oracle_summary?: any
 }
 
 // Liquidity data
@@ -94,13 +201,14 @@ export interface LiquidityInfo {
   concentration_risk: number
 }
 
-// Price stability analysis
+// Price stability analysis with chart data
 export interface PriceStabilityInfo {
   max_deviation: number
   avg_deviation: number
   depeg_events: number
   recovery_time_avg: number
   stability_score: number
+  detailed_analysis?: PegAnalysis | null
 }
 
 // Complete stablecoin analysis

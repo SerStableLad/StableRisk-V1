@@ -1,0 +1,63 @@
+version: '3.8'
+
+services:
+  # Simple Backend without Chrome dependencies
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.simple
+    container_name: stablerisk-backend-simple
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://stablerisk:stablerisk123@postgres:5432/stablerisk_db
+      - REDIS_URL=redis://redis:6379
+      - DEBUG=true
+      - LOG_LEVEL=DEBUG
+    env_file:
+      - .env
+    depends_on:
+      - postgres
+      - redis
+    restart: unless-stopped
+    volumes:
+      - .:/app  # Mount entire project for hot reload
+    networks:
+      - stablerisk-network
+
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: stablerisk-postgres-simple
+    environment:
+      - POSTGRES_DB=stablerisk_db
+      - POSTGRES_USER=stablerisk
+      - POSTGRES_PASSWORD=stablerisk123
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_simple_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    networks:
+      - stablerisk-network
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: stablerisk-redis-simple
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_simple_data:/data
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    networks:
+      - stablerisk-network
+
+volumes:
+  postgres_simple_data:
+  redis_simple_data:
+
+networks:
+  stablerisk-network:
+    driver: bridge 
