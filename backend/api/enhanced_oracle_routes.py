@@ -363,35 +363,50 @@ async def get_oracle_types():
                 "reliability": "High",
                 "centralization": "Low",
                 "typical_use": "DeFi price feeds, large protocols",
-                "security_features": ["Multiple nodes", "Reputation system", "Cryptographic proofs"]
+                "security_features": ["Multiple nodes", "Reputation system", "Cryptographic proofs"],
+                "update_interval": "Every 0.5% price deviation or 24 hours",
+                "update_frequency": "High (sub-second to minutes)",
+                "heartbeat": "1 hour - 24 hours depending on feed"
             },
             "Band Protocol": {
                 "description": "Cross-chain oracle on Cosmos ecosystem",
                 "reliability": "High", 
                 "centralization": "Low",
                 "typical_use": "Cross-chain applications, Cosmos DeFi",
-                "security_features": ["Validator consensus", "Slashing conditions", "Multi-chain"]
+                "security_features": ["Validator consensus", "Slashing conditions", "Multi-chain"],
+                "update_interval": "Every 1% price deviation or 1 hour",
+                "update_frequency": "High (30 seconds to 5 minutes)",
+                "heartbeat": "5 minutes - 1 hour"
             },
             "UMA": {
                 "description": "Optimistic oracle with dispute resolution",
                 "reliability": "Medium",
                 "centralization": "Medium",
                 "typical_use": "Synthetic assets, exotic derivatives",
-                "security_features": ["Optimistic verification", "Economic disputes", "DVM"]
+                "security_features": ["Optimistic verification", "Economic disputes", "DVM"],
+                "update_interval": "On-demand with 2-hour challenge period",
+                "update_frequency": "Medium (on-demand basis)",
+                "heartbeat": "Variable based on request"
             },
             "Tellor": {
                 "description": "Proof-of-work oracle network",
                 "reliability": "Medium",
                 "centralization": "Medium",
                 "typical_use": "Alternative to Chainlink, specific data feeds",
-                "security_features": ["Mining incentives", "Dispute mechanism", "Staking"]
+                "security_features": ["Mining incentives", "Dispute mechanism", "Staking"],
+                "update_interval": "Every 10 minutes",
+                "update_frequency": "Medium (10-minute blocks)",
+                "heartbeat": "10 minutes"
             },
             "Custom Oracle": {
                 "description": "Project-specific oracle implementation",
                 "reliability": "Variable",
                 "centralization": "High",
                 "typical_use": "Specialized applications",
-                "security_features": ["Varies by implementation"]
+                "security_features": ["Varies by implementation"],
+                "update_interval": "Variable (project-specific)",
+                "update_frequency": "Variable",
+                "heartbeat": "Depends on implementation"
             }
         },
         "risk_levels": {

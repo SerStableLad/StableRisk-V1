@@ -15,7 +15,7 @@ import os
 # Add parent directory to path for imports
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from config.api_keys import api_settings, get_coingecko_headers
-from backend.models.stablecoin import StablecoinMetadata, PegAnalysis, DepegEvent
+from backend.models.stablecoin import StablecoinMetadata, PegAnalysis, DepegEvent, PricePoint
 
 logger = logging.getLogger(__name__)
 
@@ -286,6 +286,15 @@ class CoinGeckoService:
         deviations = [abs(price - 1.0) for _, price in price_data]
         deviation_percentages = [dev * 100 for dev in deviations]
         
+        # Create price history for charting
+        price_history = []
+        for (timestamp, price), deviation_pct in zip(price_data, deviation_percentages):
+            price_history.append(PricePoint(
+                timestamp=timestamp,
+                price=price,
+                deviation_percent=deviation_pct
+            ))
+        
         # Find depeg events (>5% deviation)
         depeg_events = []
         for i, (timestamp, price) in enumerate(price_data):
@@ -333,7 +342,8 @@ class CoinGeckoService:
             max_deviation_30d=max_dev_30d,
             max_deviation_1y=max_dev_1y,
             depeg_events=depeg_events,
-            avg_recovery_time_hours=avg_recovery
+            avg_recovery_time_hours=avg_recovery,
+            price_history=price_history
         )
     
     def _parse_genesis_date(self, date_str: Optional[str]) -> Optional[datetime]:

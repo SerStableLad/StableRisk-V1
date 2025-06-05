@@ -73,7 +73,7 @@ app.include_router(cache_router, prefix="/api/v1")
 # Include new Phase 2.1 routers
 app.include_router(pegging_router)
 app.include_router(web_scraper_router)
-app.include_router(enhanced_oracle_router)
+app.include_router(enhanced_oracle_router, prefix="/api/v1")
 
 
 @app.on_event("startup")
