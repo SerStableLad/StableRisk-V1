@@ -1,5 +1,5 @@
 import axios from 'axios'
-import type { StablecoinAnalysis, PegAnalysis } from './types'
+import type { StablecoinAnalysis, PegAnalysis, EnhancedLiquidityData } from './types'
 
 const api = axios.create({
   baseURL: '/api',
@@ -49,6 +49,16 @@ export class StablecoinAPI {
     } catch (error) {
       console.warn(`Oracle summary failed for ${coinId}:`, error)
       return null
+    }
+  }
+
+  static async getComprehensiveLiquidityAnalysis(coinId: string): Promise<EnhancedLiquidityData> {
+    try {
+      const response = await api.get(`/v1/liquidity/comprehensive-analysis/${coinId}`)
+      return response.data
+    } catch (error) {
+      console.error('Error fetching comprehensive liquidity analysis:', error)
+      throw error
     }
   }
 

@@ -66,7 +66,8 @@ async def get_liquidity_analysis(
 @router.get("/comprehensive-analysis/{coin_id}", response_model=EnhancedLiquidityData)
 async def get_comprehensive_liquidity_analysis(
     coin_id: str,
-    refresh_cache: bool = Query(False, description="Force refresh of cached data")
+    refresh_cache: bool = Query(False, description="Force refresh of cached data"),
+    dynamic_discovery: bool = Query(False, description="Enable dynamic token discovery across all networks (slower)")
 ):
     """
     Get comprehensive per-chain liquidity analysis with detailed scoring
@@ -86,7 +87,10 @@ async def get_comprehensive_liquidity_analysis(
             logger.info("Cache cleared for refresh request")
         
         # Get comprehensive analysis
-        enhanced_data = await enhanced_liquidity_service.get_comprehensive_liquidity_analysis(coin_id)
+        enhanced_data = await enhanced_liquidity_service.get_comprehensive_liquidity_analysis(
+            coin_id, 
+            enable_dynamic_discovery=dynamic_discovery
+        )
         
         if not enhanced_data:
             raise HTTPException(

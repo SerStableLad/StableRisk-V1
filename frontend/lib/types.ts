@@ -201,6 +201,73 @@ export interface LiquidityInfo {
   concentration_risk: number
 }
 
+// Enhanced liquidity analysis types
+export interface PoolComposition {
+  stable_stable_percent: number
+  volatile_stable_percent: number
+  unknown_percent: number
+  stable_tokens: string[]
+  volatile_tokens: string[]
+}
+
+export interface DEXAnalysis {
+  total_dex_count: number
+  dexs_over_100k: number
+  largest_dex_percent: number
+  top_dexs: Array<{
+    name: string
+    liquidity_usd: number
+    percent: number
+  }>
+  dex_names: string[]
+}
+
+export interface LiquidityRiskFactors {
+  high_lp_centralization: boolean
+  recent_drain_events: Array<{
+    type: string
+    description: string
+    liquidity_usd: number
+  }>
+  flash_loan_vulnerability: boolean
+  no_monitoring_controls: boolean
+  concentration_risk: boolean
+}
+
+export interface ChainLiquidityScore {
+  chain_id: string
+  chain_name: string
+  tvl_usd: number
+  base_score: number
+  adjustments: Record<string, number>
+  final_score: number
+  risk_level: string
+  risk_color: string
+  critical_warning: boolean
+  dex_analysis: DEXAnalysis
+  pool_composition: PoolComposition
+  risk_factors: LiquidityRiskFactors
+  data_confidence: number
+  last_updated: string
+}
+
+export interface EnhancedLiquidityData {
+  total_liquidity_usd: number
+  global_risk_score: number
+  global_risk_level: string
+  chain_scores: ChainLiquidityScore[]
+  chain_count: number
+  chains_with_critical_risk: number
+  avg_score_per_chain: number
+  score_variance: number
+  has_critical_warnings: boolean
+  concentration_risk: boolean
+  diversification_good: boolean
+  analysis_timestamp: string
+  data_sources: string[]
+  cache_status: string
+}
+
 // Price stability analysis with chart data
 export interface PriceStabilityInfo {
   max_deviation: number

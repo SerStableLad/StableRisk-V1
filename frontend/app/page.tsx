@@ -11,6 +11,7 @@ import { AlertCircle, TrendingUp, Database, FileText, Users, Activity, AlertTria
 import { ThemeToggle } from '@/components/theme-toggle'
 import { PriceChart } from '@/components/price-chart'
 import { ReserveTransparencyReport } from '@/components/reserve-transparency-report'
+import DetailedLiquidityReport from '@/components/detailed-liquidity-report'
 
 export default function HomePage() {
   const [analysis, setAnalysis] = useState<StablecoinAnalysis | null>(null)
@@ -51,12 +52,25 @@ export default function HomePage() {
           
           {/* Main Content */}
           <div className="text-center">
-            <h1 className="text-4xl md:text-6xl font-bold mb-6">
-              StableRisk
-            </h1>
-            <p className="text-xl md:text-2xl text-muted-foreground mb-8 max-w-3xl mx-auto">
+            <div className="flex flex-col items-center justify-center mb-6">
+              <h1 className="text-4xl md:text-6xl font-bold">
+                StableRisk
+              </h1>
+              <a 
+                href="https://x.com/SerStableLad" 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="text-sm text-muted-foreground hover:text-primary transition-colors mt-2"
+              >
+                by SerStableLad
+              </a>
+            </div>
+            <p className="text-xl md:text-2xl text-muted-foreground mb-4 max-w-3xl mx-auto">
               Comprehensive risk assessment for stablecoins. Analyze price stability, 
-              liquidity, security, and more with our advanced AI-powered platform.
+              liquidity, security, and more with our advanced AI-powered platform. NFA
+            </p>
+            <p className="text-xs text-muted-foreground/80 mb-8 max-w-2xl mx-auto">
+              * Not financial advice. This platform provides educational analysis only. Always conduct your own research and consult with financial professionals before making investment decisions.
             </p>
             <SearchBar onSearch={handleSearch} isLoading={isLoading} />
           </div>
@@ -493,6 +507,11 @@ export default function HomePage() {
                   )}
                 </CardContent>
               </Card>
+
+              {/* Detailed Liquidity Analysis */}
+              <div className="col-span-full">
+                <DetailedLiquidityReport ticker={analysis.basic_info.symbol} />
+              </div>
 
               {/* Reserve Transparency Report */}
               <div className="col-span-full">

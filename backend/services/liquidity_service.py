@@ -40,37 +40,199 @@ class EnhancedLiquidityService:
             'dusd', 'ousd', 'musd', 'susd', 'yusd', 'alusd', 'usd+', 'dola'
         }
         
-        # Token address mappings for major stablecoins
+        # Token address mappings for major stablecoins (fallback if discovery fails)
         self.default_addresses = {
             "tether": {
                 "eth": "0xdac17f958d2ee523a2206206994597c13d831ec7",
                 "bsc": "0x55d398326f99059ff775485246999027b3197955",
                 "polygon": "0xc2132d05d31c914a87c6611c10748aeb04b58e8f",
-                "arbitrum": "0xfd086bc7cd5c481dcc9c85ebe478a1c0b69fcbb9"
+                "arbitrum": "0xfd086bc7cd5c481dcc9c85ebe478a1c0b69fcbb9",
+                "avalanche": "0x9702230a8ea53601f5cd2dc00fdbc13d4df4a8c7",
+                "optimism": "0x94b008aa00579c1307b0ef2c499ad98a8ce58e58",
+                "fantom": "0x049d68029688eabf473097a2fc38ef61633a3c7a",
+                "base": "0xfde4c96c8593536e31f229ea8f37b2ada2699bb2"
             },
             "usd-coin": {
                 "eth": "0xa0b86a33e6417c82c0c3e6b325bb30b9e8b3c8e8",
                 "bsc": "0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d",
                 "polygon": "0x2791bca1f2de4661ed88a30c99a7a9449aa84174",
-                "arbitrum": "0xff970a61a04b1ca14834a43f5de4533ebddb5cc8"
+                "arbitrum": "0xff970a61a04b1ca14834a43f5de4533ebddb5cc8",
+                "avalanche": "0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e",
+                "optimism": "0x7f5c764cbc14f9669b88837ca1490cca17c31607",
+                "base": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913"
             },
             "dai": {
                 "eth": "0x6b175474e89094c44da98b954eedeac495271d0f",
                 "bsc": "0x1af3f329e8be154074d8769d1ffa4ee058b1dbc3",
-                "polygon": "0x8f3cf7ad23cd3cadbd9735aff958023239c6a063"
+                "polygon": "0x8f3cf7ad23cd3cadbd9735aff958023239c6a063",
+                "arbitrum": "0xda10009cbd5d07dd0cecc66161fc93d7c9000da1",
+                "avalanche": "0xd586e7f844cea2f87f50152665bcbc2c279d8d70",
+                "optimism": "0xda10009cbd5d07dd0cecc66161fc93d7c9000da1"
             }
         }
+        
+        # Expanded network coverage
+        self.supported_networks = [
+            "eth", "bsc", "polygon", "arbitrum", "avalanche", "optimism", "fantom", 
+            "base", "celo", "cronos", "moonbeam", "moonriver", "kava", "metis", 
+            "aurora", "harmony", "fuse", "gnosis", "milkomeda", "evmos"
+        ]
+
+    async def get_available_networks(self) -> List[Dict[str, Any]]:
+        """Get all available networks from GeckoTerminal"""
+        cache_key = "gt_networks"
+        
+        # Check cache
+        if cache_key in self._cache:
+            cached_data, timestamp = self._cache[cache_key]
+            if datetime.utcnow() - timestamp < timedelta(hours=24):  # Cache networks for 24h
+                return cached_data
+        
+        try:
+            url = f"{self.geckoterminal_base}/networks"
+            data = await self._make_request(url)
+            
+            if data and 'data' in data:
+                networks = data['data']
+                self._cache[cache_key] = (networks, datetime.utcnow())
+                logger.info(f"Retrieved {len(networks)} available networks")
+                return networks
+            
+        except Exception as e:
+            logger.error(f"Error fetching networks: {e}")
+        
+        return []
+
+    async def search_token_on_network(self, network_id: str, query: str) -> Optional[str]:
+        """Search for a token on a specific network and return the token address"""
+        try:
+            # Use GeckoTerminal search endpoint for the network
+            url = f"{self.geckoterminal_base}/networks/{network_id}/tokens/multi/{query}"
+            data = await self._make_request(url)
+            
+            if data and 'data' in data and len(data['data']) > 0:
+                # Return the first matching token address
+                token_data = data['data'][0]
+                token_address = token_data.get('attributes', {}).get('address')
+                if token_address:
+                    logger.info(f"Found {query} on {network_id}: {token_address}")
+                    return token_address
+            
+            # Alternative: try searching by symbol in pools
+            pools_url = f"{self.geckoterminal_base}/networks/{network_id}/pools?page=1"
+            pools_data = await self._make_request(pools_url)
+            
+            if pools_data and 'data' in pools_data:
+                for pool in pools_data['data'][:20]:  # Check first 20 pools
+                    pool_name = pool.get('attributes', {}).get('name', '').lower()
+                    if query.lower() in pool_name:
+                        # Try to extract token address from pool tokens
+                        relationships = pool.get('relationships', {})
+                        if 'base_token' in relationships:
+                            base_token = relationships['base_token']['data']
+                            if base_token.get('id'):
+                                token_addr = base_token['id'].split('_')[-1]
+                                if len(token_addr) == 42 and token_addr.startswith('0x'):
+                                    logger.info(f"Found {query} on {network_id} via pool: {token_addr}")
+                                    return token_addr
+                        
+                        if 'quote_token' in relationships:
+                            quote_token = relationships['quote_token']['data']
+                            if quote_token.get('id'):
+                                token_addr = quote_token['id'].split('_')[-1]
+                                if len(token_addr) == 42 and token_addr.startswith('0x'):
+                                    logger.info(f"Found {query} on {network_id} via pool: {token_addr}")
+                                    return token_addr
+            
+        except Exception as e:
+            logger.debug(f"Token search failed for {query} on {network_id}: {e}")
+        
+        return None
+
+    async def discover_token_addresses(self, coin_id: str) -> Dict[str, str]:
+        """Dynamically discover token addresses across all supported networks"""
+        cache_key = f"token_discovery_{coin_id}"
+        
+        # Check cache
+        if cache_key in self._cache:
+            cached_data, timestamp = self._cache[cache_key]
+            if datetime.utcnow() - timestamp < timedelta(hours=6):  # Cache for 6 hours
+                logger.info(f"Using cached token addresses for {coin_id}")
+                return cached_data
+        
+        logger.info(f"Discovering token addresses for {coin_id} across networks...")
+        discovered_addresses = {}
+        
+        # Get search terms based on coin_id
+        search_terms = []
+        if coin_id == "tether":
+            search_terms = ["usdt", "tether"]
+        elif coin_id == "usd-coin":
+            search_terms = ["usdc", "usd-coin"]
+        elif coin_id == "dai":
+            search_terms = ["dai"]
+        else:
+            search_terms = [coin_id.replace("-", "")]
+        
+        # Search across supported networks
+        search_tasks = []
+        for network in self.supported_networks:
+            for term in search_terms:
+                search_tasks.append(self._search_token_on_network_with_fallback(network, term, coin_id))
+        
+        # Execute searches in parallel with limited concurrency
+        semaphore = asyncio.Semaphore(2)  # Reduced from 5 to 2 concurrent requests
+        
+        async def bounded_search(task):
+            async with semaphore:
+                return await task
+        
+        results = await asyncio.gather(*[bounded_search(task) for task in search_tasks], return_exceptions=True)
+        
+        # Process results
+        for result in results:
+            if isinstance(result, tuple) and len(result) == 2:
+                network, address = result
+                if address and network not in discovered_addresses:
+                    discovered_addresses[network] = address
+        
+        # Add fallback addresses for any missing networks
+        fallback_addresses = self.default_addresses.get(coin_id, {})
+        for network, address in fallback_addresses.items():
+            if network not in discovered_addresses:
+                discovered_addresses[network] = address
+                logger.info(f"Using fallback address for {coin_id} on {network}")
+        
+        # Cache the results
+        self._cache[cache_key] = (discovered_addresses, datetime.utcnow())
+        
+        logger.info(f"Discovered {coin_id} on {len(discovered_addresses)} networks: {list(discovered_addresses.keys())}")
+        return discovered_addresses
+
+    async def _search_token_on_network_with_fallback(self, network: str, search_term: str, coin_id: str) -> Optional[Tuple[str, str]]:
+        """Search for token on network with fallback logic"""
+        try:
+            address = await self.search_token_on_network(network, search_term)
+            if address:
+                return (network, address)
+        except Exception as e:
+            logger.debug(f"Search failed for {search_term} on {network}: {e}")
+        
+        return None
     
     async def _make_request(self, url: str, headers: Dict[str, str] = None) -> Optional[Dict[str, Any]]:
         """Make HTTP request with enhanced error handling"""
         try:
+            # Add small delay to respect rate limits
+            await asyncio.sleep(0.1)
+            
             async with aiohttp.ClientSession() as session:
                 async with session.get(url, headers=headers or {}) as response:
                     if response.status == 200:
                         return await response.json()
                     elif response.status == 429:
                         logger.warning(f"Rate limit exceeded for {url}")
-                        await asyncio.sleep(2)
+                        await asyncio.sleep(5)  # Increased delay for rate limiting
                         return None
                     else:
                         logger.error(f"API error {response.status} for {url}")
@@ -164,8 +326,58 @@ class EnhancedLiquidityService:
             volatile_tokens=list(volatile_tokens)
         )
     
+    async def get_geckoterminal_pools(self, token_address: str, network: str = "eth") -> List[Dict[str, Any]]:
+        """Get liquidity pools from GeckoTerminal for a specific token"""
+        cache_key = f"gt_pools_{network}_{token_address}"
+        
+        # Check cache
+        if cache_key in self._cache:
+            cached_data, timestamp = self._cache[cache_key]
+            if datetime.utcnow() - timestamp < self.cache_duration:
+                logger.info(f"Using cached GeckoTerminal pools for {token_address}")
+                return cached_data
+        
+        try:
+            logger.info(f"Fetching GeckoTerminal pools for {token_address} on {network}")
+            
+            # Include DEX data to get proper DEX names
+            url = f"{self.geckoterminal_base}/networks/{network}/tokens/{token_address}/pools?include=dex"
+            data = await self._make_request(url)
+            
+            if not data or 'data' not in data:
+                logger.warning(f"No pool data found for {token_address}")
+                return []
+            
+            pools = data['data']
+            
+            # Create DEX mapping from included data
+            dex_mapping = {}
+            if 'included' in data:
+                for item in data['included']:
+                    if item.get('type') == 'dex':
+                        dex_id = item.get('id')
+                        dex_name = item.get('attributes', {}).get('name', dex_id.title())
+                        dex_mapping[dex_id] = dex_name
+            
+            # Add DEX information to pools
+            for pool in pools:
+                dex_rel = pool.get('relationships', {}).get('dex', {}).get('data', {})
+                dex_id = dex_rel.get('id', 'unknown')
+                pool['dex_name'] = dex_mapping.get(dex_id, dex_id.title() if dex_id != 'unknown' else 'Unknown')
+                pool['dex_id'] = dex_id
+            
+            # Cache the result
+            self._cache[cache_key] = (pools, datetime.utcnow())
+            
+            logger.info(f"Found {len(pools)} pools for {token_address} with DEX mapping")
+            return pools
+            
+        except Exception as e:
+            logger.error(f"Error fetching GeckoTerminal pools: {e}")
+            return []
+    
     def _analyze_dex_diversity(self, pools: List[Dict[str, Any]]) -> DEXAnalysis:
-        """Analyze DEX diversity and concentration"""
+        """Analyze DEX diversity and concentration using proper DEX identification"""
         dex_liquidity = {}
         total_liquidity = 0.0
         pools_over_100k = 0
@@ -175,28 +387,8 @@ class EnhancedLiquidityService:
             pool_liquidity = float(attributes.get('reserve_in_usd', 0))
             total_liquidity += pool_liquidity
             
-            # Extract DEX name from pool name or address
-            pool_name = attributes.get('name', '')
-            dex_name = "Unknown"
-            
-            # Common DEX pattern matching
-            if 'uniswap' in pool_name.lower():
-                dex_name = "Uniswap"
-            elif 'sushiswap' in pool_name.lower() or 'sushi' in pool_name.lower():
-                dex_name = "SushiSwap"
-            elif 'curve' in pool_name.lower():
-                dex_name = "Curve"
-            elif 'balancer' in pool_name.lower():
-                dex_name = "Balancer"
-            elif 'pancakeswap' in pool_name.lower() or 'pancake' in pool_name.lower():
-                dex_name = "PancakeSwap"
-            elif 'quickswap' in pool_name.lower():
-                dex_name = "QuickSwap"
-            else:
-                # Use first part of pool name as DEX identifier
-                parts = pool_name.split(':')
-                if len(parts) > 1:
-                    dex_name = parts[0].title()
+            # Use the properly extracted DEX name
+            dex_name = pool.get('dex_name', 'Unknown')
             
             if dex_name not in dex_liquidity:
                 dex_liquidity[dex_name] = 0.0
@@ -320,39 +512,6 @@ class EnhancedLiquidityService:
         else:
             return "critical", "red"
     
-    async def get_geckoterminal_pools(self, token_address: str, network: str = "eth") -> List[Dict[str, Any]]:
-        """Get liquidity pools from GeckoTerminal for a specific token"""
-        cache_key = f"gt_pools_{network}_{token_address}"
-        
-        # Check cache
-        if cache_key in self._cache:
-            cached_data, timestamp = self._cache[cache_key]
-            if datetime.utcnow() - timestamp < self.cache_duration:
-                logger.info(f"Using cached GeckoTerminal pools for {token_address}")
-                return cached_data
-        
-        try:
-            logger.info(f"Fetching GeckoTerminal pools for {token_address} on {network}")
-            
-            url = f"{self.geckoterminal_base}/networks/{network}/tokens/{token_address}/pools"
-            data = await self._make_request(url)
-            
-            if not data or 'data' not in data:
-                logger.warning(f"No pool data found for {token_address}")
-                return []
-            
-            pools = data['data']
-            
-            # Cache the result
-            self._cache[cache_key] = (pools, datetime.utcnow())
-            
-            logger.info(f"Found {len(pools)} pools for {token_address}")
-            return pools
-            
-        except Exception as e:
-            logger.error(f"Error fetching GeckoTerminal pools: {e}")
-            return []
-    
     async def analyze_chain_liquidity(self, coin_id: str, network: str, token_address: str) -> Optional[ChainLiquidityScore]:
         """Perform comprehensive per-chain liquidity analysis"""
         try:
@@ -415,31 +574,62 @@ class EnhancedLiquidityService:
             logger.error(f"Error analyzing {network} liquidity for {coin_id}: {e}")
             return None
     
-    async def get_comprehensive_liquidity_analysis(self, coin_id: str, token_addresses: Dict[str, str] = None) -> Optional[EnhancedLiquidityData]:
+    async def get_comprehensive_liquidity_analysis(self, coin_id: str, token_addresses: Dict[str, str] = None, enable_dynamic_discovery: bool = False) -> Optional[EnhancedLiquidityData]:
         """Get comprehensive multi-chain liquidity analysis with per-chain scoring"""
         try:
             logger.info(f"Starting comprehensive liquidity analysis for {coin_id}")
             
-            # Use provided addresses or defaults
-            addresses = token_addresses or self.default_addresses.get(coin_id, {})
+            # Use provided addresses, fallback addresses, or discover dynamically
+            if token_addresses:
+                addresses = token_addresses
+                logger.info(f"Using provided token addresses for {coin_id}")
+            elif enable_dynamic_discovery:
+                addresses = await self.discover_token_addresses(coin_id)
+                if not addresses:
+                    logger.warning(f"No token addresses found for {coin_id}")
+                    return None
+            else:
+                # Use expanded fallback addresses (now includes 8 chains for USDT)
+                addresses = self.default_addresses.get(coin_id, {})
+                if not addresses:
+                    logger.warning(f"No fallback addresses configured for {coin_id}")
+                    return None
+                logger.info(f"Using expanded fallback addresses for {coin_id}")
             
-            if not addresses:
-                logger.warning(f"No token addresses configured for {coin_id}")
-                return None
+            logger.info(f"Analyzing {coin_id} across {len(addresses)} networks: {list(addresses.keys())}")
             
-            # Analyze each chain
+            # Analyze each chain in parallel with limited concurrency
+            semaphore = asyncio.Semaphore(2)  # Reduced from 3 to 2 concurrent chain analysis
+            
+            async def analyze_chain_bounded(network, address):
+                async with semaphore:
+                    return await self.analyze_chain_liquidity(coin_id, network, address)
+            
+            analysis_tasks = [
+                analyze_chain_bounded(network, address) 
+                for network, address in addresses.items()
+            ]
+            
+            chain_results = await asyncio.gather(*analysis_tasks, return_exceptions=True)
+            
+            # Process results
             chain_scores = []
             total_liquidity = 0.0
             
-            for network, address in addresses.items():
-                chain_score = await self.analyze_chain_liquidity(coin_id, network, address)
-                if chain_score:
-                    chain_scores.append(chain_score)
-                    total_liquidity += chain_score.tvl_usd
+            for i, result in enumerate(chain_results):
+                if isinstance(result, ChainLiquidityScore):
+                    chain_scores.append(result)
+                    total_liquidity += result.tvl_usd
+                elif isinstance(result, Exception):
+                    network = list(addresses.keys())[i]
+                    logger.warning(f"Analysis failed for {network}: {result}")
             
             if not chain_scores:
-                logger.warning(f"No chain analysis data available for {coin_id}")
+                logger.warning(f"No successful chain analysis for {coin_id}")
                 return None
+
+            # Sort chains by liquidity (highest first)
+            chain_scores.sort(key=lambda x: x.tvl_usd, reverse=True)
             
             # Calculate global metrics
             # Weighted average score by TVL
@@ -465,7 +655,7 @@ class EnhancedLiquidityService:
             concentration_risk = any(score.risk_factors.concentration_risk for score in chain_scores)
             diversification_good = chain_count >= 3 and avg_score_per_chain >= 5.0
             
-            return EnhancedLiquidityData(
+            result = EnhancedLiquidityData(
                 total_liquidity_usd=total_liquidity,
                 global_risk_score=global_risk_score,
                 global_risk_level=global_risk_level,
@@ -481,6 +671,12 @@ class EnhancedLiquidityService:
                 data_sources=["GeckoTerminal", "DeFiLlama"],
                 cache_status="computed"
             )
+            
+            logger.info(f"Comprehensive analysis complete for {coin_id}: "
+                       f"${total_liquidity:,.0f} across {chain_count} chains, "
+                       f"global score {global_risk_score:.1f}/10")
+            
+            return result
             
         except Exception as e:
             logger.error(f"Error in comprehensive liquidity analysis for {coin_id}: {e}")
