@@ -1,0 +1,250 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# 📋 StableRisk Project Rules & Best Practices
+
+## 🏗️ **Architecture & Framework Rules**
+
+### **Next.js App Router Standards**
+- **Always use Server Components by default** - Only use Client Components when necessary (interactivity, hooks, browser APIs)
+- **Implement proper data fetching patterns**:
+  ```tsx
+  // ✅ Server Component data fetching
+  async function StablecoinPage({ params }) {
+    const data = await fetch(`/api/stablecoin/${params.ticker}`, {
+      next: { revalidate: 86400 } // 24-hour cache
+    })
+    return <Dashboard data={data} />
+  }
+  ```
+- **Use loading.tsx and error.tsx** for consistent UX
+- **Implement Suspense boundaries** for streaming content
+- **Co-locate data fetching** with components that need the data
+
+### **API Design Principles**
+- **Follow RESTful conventions** with proper HTTP status codes
+- **Implement fallback strategies** for external APIs:
+  ```javascript
+  // ✅ Primary → Fallback pattern
+  async function getPrice(ticker) {
+    try {
+      return await coinGeckoAPI.getPrice(ticker)
+    } catch (error) {
+      return await coinMarketCapAPI.getPrice(ticker)
+    }
+  }
+  ```
+- **Always validate input data** before processing
+- **Return consistent error response format**
+
+## 💾 **Data Management Rules**
+
+### **Caching Strategy**
+- **24-hour cache TTL** for all stablecoin data
+- **Use Redis for distributed caching** in production
+- **Implement cache invalidation** for manual updates
+- **Cache at multiple levels**:
+  - Next.js fetch cache (24h)
+  - Redis application cache (24h)
+  - Browser cache (appropriate headers)
+
+### **Rate Limiting**
+- **10 queries per IP per day** - strictly enforced
+- **Use sliding window algorithm** for fair distribution
+- **Implement graceful degradation** when limits are hit
+- **Clear error messages** for rate limit violations
+
+### **Data Validation**
+- **Never trust external API data** - always validate
+- **Implement data schemas** with TypeScript interfaces
+- **Handle missing/null data gracefully**
+- **Log data inconsistencies** for monitoring
+
+## 🎨 **Frontend Development Rules**
+
+### **Component Architecture**
+- **Use shadcn/ui as the foundation** - don't reinvent components
+- **Composition over abstraction**:
+  ```tsx
+  // ✅ Compose existing components
+  <ChartContainer config={chartConfig}>
+    <BarChart data={data}>
+      <Bar dataKey="price" fill="var(--color-primary)" />
+      <ChartTooltip content={<ChartTooltipContent />} />
+    </BarChart>
+  </ChartContainer>
+  ```
+- **Create custom components only when necessary**
+- **Maintain consistent component patterns**
+
+### **UI/UX Standards**
+- **Mobile-first responsive design** - always test on mobile
+- **Implement skeleton loading states** for all async operations
+- **Use consistent spacing** with Tailwind utilities
+- **Follow accessibility guidelines** (WCAG 2.1 AA)
+- **Implement proper focus management**
+
+### **State Management**
+- **Server state in Server Components** when possible
+- **Use SWR/React Query** for client-side data fetching
+- **Minimize client-side state** - prefer URL state
+- **Implement optimistic updates** for better UX
+
+## 🔒 **Security & Performance Rules**
+
+### **Security Standards**
+- **Never expose API keys** in client-side code
+- **Implement proper CORS** configuration
+- **Sanitize all user inputs**
+- **Use HTTPS everywhere** in production
+- **Log security events** for monitoring
+
+### **Performance Optimization**
+- **Optimize images** with Next.js Image component
+- **Implement code splitting** with dynamic imports
+- **Minimize bundle size** - audit regularly
+- **Use proper caching headers**
+- **Monitor Core Web Vitals**
+
+## 💰 **Fintech-Specific Rules**
+
+### **Data Accuracy**
+- **Multiple source verification** for critical data points
+- **Implement data reconciliation** between sources
+- **Flag data inconsistencies** prominently
+- **Maintain audit trails** for all calculations
+- **Never round financial data** inappropriately
+
+### **Risk Assessment Standards**
+- **Clear scoring methodology** - fully documented
+- **Weighted factor importance**: Peg > Transparency > Liquidity > Oracle > Audit
+- **Handle partial data gracefully** - show "Unrated" clearly
+- **Implement score confidence levels**
+- **Regular methodology reviews**
+
+### **User Communication**
+- **Clear disclaimers** - "Not financial advice"
+- **Transparent about data sources** and limitations
+- **Show data freshness** timestamps
+- **Explain scoring methodology** to users
+- **Provide context** for risk scores
+
+## 🛠️ **Development Workflow Rules**
+
+### **Code Quality**
+- **TypeScript strict mode** - no `any` types
+- **ESLint + Prettier** configuration enforced
+- **Unit tests for scoring algorithms** - 100% coverage
+- **Integration tests for API endpoints**
+- **E2E tests for critical user flows**
+
+### **Error Handling**
+- **Comprehensive error boundaries** in React
+- **Graceful degradation** for failed services
+- **User-friendly error messages**
+- **Detailed logging** for debugging
+- **Fallback content** for all external dependencies
+
+### **Monitoring & Observability**
+- **Log all API calls** with timing
+- **Monitor external API reliability**
+- **Track user engagement** metrics
+- **Alert on error thresholds**
+- **Regular performance audits**
+
+## 📊 **Data Visualization Rules**
+
+### **Chart Standards**
+- **Use Recharts with shadcn/ui** for consistency
+- **Implement proper theming** with CSS variables
+- **Mobile-responsive charts**
+- **Accessible color schemes** (colorblind-friendly)
+- **Interactive tooltips** with relevant data
+
+### **Financial Data Display**
+- **Consistent number formatting**
+- **Appropriate decimal precision**
+- **Clear axis labels** and legends
+- **Time series with proper timestamps**
+- **Visual indicators** for significant events (depegs)
+
+## 🚀 **Deployment & Infrastructure Rules**
+
+### **Environment Management**
+- **Separate configs** for dev/staging/prod
+- **Environment-specific feature flags**
+- **Secure secret management**
+- **Database migrations** with rollback capability
+- **Blue-green deployment** strategy
+
+### **Monitoring in Production**
+- **Health check endpoints**
+- **Database connection monitoring**
+- **External API dependency checks**
+- **Rate limit monitoring**
+- **User error tracking**
+
+## 📚 **Documentation Standards**
+
+### **Code Documentation**
+- **Self-documenting code** with clear naming
+- **JSDoc for complex functions**
+- **README for each service**
+- **API documentation** with examples
+- **Architecture decision records** (ADRs)
+
+### **User Documentation**
+- **Clear onboarding** for new users
+- **Help tooltips** for complex features
+- **FAQ section** for common questions
+- **Methodology explanation** page
+- **Contact/support** information
+
+---
+
+## 🎯 **Success Metrics**
+
+### **Technical KPIs**
+- API response time < 2s (95th percentile)
+- Frontend load time < 3s
+- 99.9% uptime
+- < 1% error rate
+- Zero security incidents
+
+### **User Experience KPIs**
+- < 5s time to first meaningful paint
+- > 95% mobile usability score
+- < 3% bounce rate on results
+- > 80% user task completion
+- Positive accessibility audit
+
+---
+
+## 🔄 **Implementation Guidelines**
+
+### **Development Phases**
+1. **Foundation**: Project setup, architecture, and core infrastructure
+2. **Backend**: API development, data services, and caching
+3. **Frontend**: UI components, user interface, and interactions
+4. **Integration**: Connect frontend and backend, testing
+5. **Deployment**: Production setup, monitoring, and optimization
+
+### **Quality Gates**
+- All code must pass TypeScript strict checks
+- 100% test coverage for critical business logic
+- Performance budgets must be met
+- Security scan must pass
+- Accessibility audit must score 95%+
+
+### **Review Process**
+- Code reviews required for all changes
+- Architecture reviews for significant changes
+- Security reviews for external integrations
+- Performance reviews for data-heavy features
+- UX reviews for user-facing changes
+
+---
+
+**Based on Context7 research of Next.js, Express.js, shadcn/ui, and fintech best practices**

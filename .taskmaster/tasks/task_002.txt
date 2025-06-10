@@ -1,0 +1,37 @@
+# Task ID: 2
+# Title: Frontend: Landing & Search UI
+# Status: done
+# Dependencies: None
+# Priority: high
+# Description: Implement the landing page and search functionality
+# Details:
+Create a user-friendly landing page with search functionality and proper validation.
+
+# Test Strategy:
+Test search functionality with valid and invalid inputs, verify proper error handling.
+
+# Subtasks:
+## 2.1. Design Landing Page [done]
+### Dependencies: None
+### Description: Create a responsive landing page with logo and disclaimer
+### Details:
+Implement the landing page with logo, description tagline, and disclaimer.
+
+## 2.2. Implement Search Bar [done]
+### Dependencies: None
+### Description: Create a large centered search bar for manual input
+### Details:
+Design and implement a clean search interface for stablecoin ticker input.
+
+## 2.3. Add Search Validation [done]
+### Dependencies: None
+### Description: Implement validation for invalid ticker inputs
+### Details:
+Add error handling and user feedback for 'Stablecoin not found' scenarios.
+
+## 2.4. Create Skeleton Loader [done]
+### Dependencies: None
+### Description: Design skeleton loader UI for data fetching states
+### Details:
+Implement loading state UI components for an improved user experience during data fetching.
+

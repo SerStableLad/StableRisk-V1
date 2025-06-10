@@ -1,0 +1,263 @@
+{
+  "tasks": [
+    {
+      "id": 1,
+      "title": "Project Setup",
+      "description": "Initialize and configure the StableRisk project environment",
+      "status": "done",
+      "priority": "high",
+      "details": "Set up the frontend and backend infrastructure, configure environment variables, and integrate UI components.",
+      "testStrategy": "Verify that all components are properly initialized and the application runs without errors.",
+      "subtasks": [
+        {
+          "id": "1.1",
+          "title": "Initialize Next.js 15 with TypeScript",
+          "description": "Set up the frontend React project with Next.js 15 and TypeScript",
+          "status": "done",
+          "details": "Create a new Next.js project with TypeScript support and configure the basic project structure."
+        },
+        {
+          "id": "1.2",
+          "title": "Setup Next.js API Routes",
+          "description": "Configure the backend API service using Next.js API Routes",
+          "status": "done",
+          "details": "Create the API route structure and implement basic request handling."
+        },
+        {
+          "id": "1.3",
+          "title": "Configure API Keys",
+          "description": "Set up environment variables for external APIs",
+          "status": "done",
+          "details": "Configure environment variables for CoinGecko, CoinMarketCap, DeFiLlama, and GeckoTerminal API keys."
+        },
+        {
+          "id": "1.4",
+          "title": "Integrate shadcn/ui",
+          "description": "Set up the shadcn/ui component library",
+          "status": "done",
+          "details": "Install and configure shadcn/ui components for consistent UI styling."
+        },
+        {
+          "id": "1.5",
+          "title": "Configure Theme Support",
+          "description": "Implement light and dark mode theming",
+          "status": "done",
+          "details": "Set up theme switching functionality with proper color schemes for both modes."
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Frontend: Landing & Search UI",
+      "description": "Implement the landing page and search functionality",
+      "status": "done",
+      "priority": "high",
+      "details": "Create a user-friendly landing page with search functionality and proper validation.",
+      "testStrategy": "Test search functionality with valid and invalid inputs, verify proper error handling.",
+      "subtasks": [
+        {
+          "id": "2.1",
+          "title": "Design Landing Page",
+          "description": "Create a responsive landing page with logo and disclaimer",
+          "status": "done",
+          "details": "Implement the landing page with logo, description tagline, and disclaimer."
+        },
+        {
+          "id": "2.2",
+          "title": "Implement Search Bar",
+          "description": "Create a large centered search bar for manual input",
+          "status": "done",
+          "details": "Design and implement a clean search interface for stablecoin ticker input."
+        },
+        {
+          "id": "2.3",
+          "title": "Add Search Validation",
+          "description": "Implement validation for invalid ticker inputs",
+          "status": "done",
+          "details": "Add error handling and user feedback for 'Stablecoin not found' scenarios."
+        },
+        {
+          "id": "2.4",
+          "title": "Create Skeleton Loader",
+          "description": "Design skeleton loader UI for data fetching states",
+          "status": "done",
+          "details": "Implement loading state UI components for an improved user experience during data fetching."
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Backend: Data Aggregation & Tiered API Architecture",
+      "description": "Implement the data services and tiered architecture",
+      "status": "in-progress",
+      "priority": "high",
+      "details": "Create robust data services with proper caching, error handling, and tiered delivery.",
+      "testStrategy": "Test each service individually and verify integrated functionality with proper error handling.",
+      "subtasks": [
+        {
+          "id": "3.1",
+          "title": "Core Services Implementation",
+          "description": "Implement the core data services",
+          "status": "done",
+          "details": "Create services for stablecoin metadata, peg stability analysis, transparency, oracle analysis, liquidity analysis, and audit discovery."
+        },
+        {
+          "id": "3.2",
+          "title": "Tiered Data Fetch Implementation",
+          "description": "Modify data service to support progressive data delivery",
+          "status": "done",
+          "details": "Implement getTier1Data, getTier2Data, and getTier3Data methods with appropriate performance targets."
+        },
+        {
+          "id": "3.3",
+          "title": "Response Schema Design",
+          "description": "Define progressive response object structure",
+          "status": "done",
+          "details": "Create a consistent data structure across all tiers with proper backward compatibility."
+        },
+        {
+          "id": "3.4",
+          "title": "Performance Optimization",
+          "description": "Optimize API calls and implement early return patterns",
+          "status": "done",
+          "details": "Parallelize API calls within tiers and implement performance monitoring."
+        },
+        {
+          "id": "3.5",
+          "title": "Streaming API Implementation",
+          "description": "Create streaming API route for tiered responses",
+          "status": "pending",
+          "details": "Implement progressive data transmission with proper headers and disconnection handling."
+        },
+        {
+          "id": "3.6",
+          "title": "Tier-specific Caching Strategy",
+          "description": "Implement different cache durations per tier",
+          "status": "pending",
+          "details": "Set up T1: 24h, T2: 12h, T3: 6h caching with partial invalidation support."
+        },
+        {
+          "id": "3.7",
+          "title": "Enhanced Error Handling",
+          "description": "Implement partial success responses and granular error reporting",
+          "status": "pending",
+          "details": "Add per-tier error reporting and fallback data patterns for tier failures."
+        },
+        {
+          "id": 4.7,
+          "title": "Backend Testing Strategy",
+          "description": "Implement comprehensive testing for the tiered backend architecture",
+          "details": "Create functional tests for each tier, performance tests for response times, and API integration tests for data flow.",
+          "status": "pending",
+          "dependencies": [],
+          "parentTaskId": 3
+        },
+        {
+          "id": 5.7,
+          "title": "Backend Success Metrics",
+          "description": "Define and monitor performance and reliability metrics",
+          "details": "Establish metrics for response times (T1: <500ms, T2: <2s, T3: <5s, End-to-end: <7s) and reliability (99.9% availability, <1% error rate, >80% cache hits, 100% partial data on failures).",
+          "status": "pending",
+          "dependencies": [],
+          "parentTaskId": 3
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Backend: Risk Scoring Engine",
+      "description": "Implement the risk assessment scoring system",
+      "status": "done",
+      "priority": "high",
+      "details": "Create a comprehensive scoring system with proper weighting and presentation.",
+      "testStrategy": "Verify scoring calculations with different input scenarios and edge cases.",
+      "subtasks": [
+        {
+          "id": "4.1",
+          "title": "Define Factor Weights",
+          "description": "Implement the 40/20/15/15/10 weighting system",
+          "status": "done",
+          "details": "Configure weights for peg, transparency, liquidity, oracle, and audit factors."
+        },
+        {
+          "id": "4.2",
+          "title": "Implement Partial Scoring",
+          "description": "Handle unknown data fields gracefully",
+          "status": "done",
+          "details": "Show 'Unrated' for missing data and calculate partial scores appropriately."
+        },
+        {
+          "id": "4.3",
+          "title": "Calculate Composite Score",
+          "description": "Implement half-point precision risk scoring",
+          "status": "done",
+          "details": "Create the algorithm for calculating the final risk score with proper precision."
+        },
+        {
+          "id": "4.4",
+          "title": "Add Color Coding Logic",
+          "description": "Implement red/yellow/green classification based on score ranges",
+          "status": "done",
+          "details": "Map scores to color codes: Red (0-5), Yellow (>5-8), Green (>8-10)."
+        },
+        {
+          "id": "4.5",
+          "title": "Generate Score Breakdown",
+          "description": "Return detailed factor analysis with the risk score",
+          "status": "done",
+          "details": "Create a comprehensive breakdown of how each factor contributes to the final score."
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Frontend: Progressive UI Implementation",
+      "description": "Create a responsive UI that displays data progressively",
+      "status": "pending",
+      "priority": "high",
+      "details": "Implement a UI that shows data as it becomes available in the tiered architecture.",
+      "testStrategy": "Test progressive rendering with different network conditions and verify proper loading states.",
+      "subtasks": []
+    },
+    {
+      "id": 6,
+      "title": "Frontend: UX Enhancements",
+      "description": "Improve the user experience with additional features",
+      "status": "pending",
+      "priority": "medium",
+      "details": "Add features like smooth scrolling, skeleton loaders, and shareable links.",
+      "testStrategy": "Verify that all enhancements work properly across different devices and browsers.",
+      "subtasks": []
+    },
+    {
+      "id": 7,
+      "title": "Testing & Quality Assurance",
+      "description": "Implement comprehensive testing for all components",
+      "status": "pending",
+      "priority": "high",
+      "details": "Create unit tests, integration tests, and UI component tests.",
+      "testStrategy": "Ensure test coverage for all critical components and edge cases.",
+      "subtasks": []
+    },
+    {
+      "id": 8,
+      "title": "Deployment & Monitoring",
+      "description": "Set up the production environment and monitoring",
+      "status": "pending",
+      "priority": "medium",
+      "details": "Deploy the application and configure monitoring and logging.",
+      "testStrategy": "Verify that the deployed application works correctly and monitoring is functional.",
+      "subtasks": []
+    },
+    {
+      "id": 9,
+      "title": "Documentation",
+      "description": "Create comprehensive user and technical documentation",
+      "status": "pending",
+      "priority": "medium",
+      "details": "Write user guides, API documentation, and methodology explanations.",
+      "testStrategy": "Verify that the documentation is accurate and comprehensive.",
+      "subtasks": []
+    }
+  ]
+}

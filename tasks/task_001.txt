@@ -1,0 +1,43 @@
+# Task ID: 1
+# Title: Project Setup
+# Status: done
+# Dependencies: None
+# Priority: high
+# Description: Initialize and configure the StableRisk project environment
+# Details:
+Set up the frontend and backend infrastructure, configure environment variables, and integrate UI components.
+
+# Test Strategy:
+Verify that all components are properly initialized and the application runs without errors.
+
+# Subtasks:
+## 1.1. Initialize Next.js 15 with TypeScript [done]
+### Dependencies: None
+### Description: Set up the frontend React project with Next.js 15 and TypeScript
+### Details:
+Create a new Next.js project with TypeScript support and configure the basic project structure.
+
+## 1.2. Setup Next.js API Routes [done]
+### Dependencies: None
+### Description: Configure the backend API service using Next.js API Routes
+### Details:
+Create the API route structure and implement basic request handling.
+
+## 1.3. Configure API Keys [done]
+### Dependencies: None
+### Description: Set up environment variables for external APIs
+### Details:
+Configure environment variables for CoinGecko, CoinMarketCap, DeFiLlama, and GeckoTerminal API keys.
+
+## 1.4. Integrate shadcn/ui [done]
+### Dependencies: None
+### Description: Set up the shadcn/ui component library
+### Details:
+Install and configure shadcn/ui components for consistent UI styling.
+
+## 1.5. Configure Theme Support [done]
+### Dependencies: None
+### Description: Implement light and dark mode theming
+### Details:
+Set up theme switching functionality with proper color schemes for both modes.
+

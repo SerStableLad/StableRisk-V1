@@ -1,0 +1,43 @@
+# Task ID: 4
+# Title: Backend: Risk Scoring Engine
+# Status: done
+# Dependencies: None
+# Priority: high
+# Description: Implement the risk assessment scoring system
+# Details:
+Create a comprehensive scoring system with proper weighting and presentation.
+
+# Test Strategy:
+Verify scoring calculations with different input scenarios and edge cases.
+
+# Subtasks:
+## 4.1. Define Factor Weights [done]
+### Dependencies: None
+### Description: Implement the 40/20/15/15/10 weighting system
+### Details:
+Configure weights for peg, transparency, liquidity, oracle, and audit factors.
+
+## 4.2. Implement Partial Scoring [done]
+### Dependencies: None
+### Description: Handle unknown data fields gracefully
+### Details:
+Show 'Unrated' for missing data and calculate partial scores appropriately.
+
+## 4.3. Calculate Composite Score [done]
+### Dependencies: None
+### Description: Implement half-point precision risk scoring
+### Details:
+Create the algorithm for calculating the final risk score with proper precision.
+
+## 4.4. Add Color Coding Logic [done]
+### Dependencies: None
+### Description: Implement red/yellow/green classification based on score ranges
+### Details:
+Map scores to color codes: Red (0-5), Yellow (>5-8), Green (>8-10).
+
+## 4.5. Generate Score Breakdown [done]
+### Dependencies: None
+### Description: Return detailed factor analysis with the risk score
+### Details:
+Create a comprehensive breakdown of how each factor contributes to the final score.
+
