@@ -75,7 +75,7 @@ StableRisk provides sophisticated risk assessment for USD-pegged stablecoins thr
 ## 🏃‍♂️ Quick Start
 
 ### Prerequisites
-- Node.js 18+
+- Node.js 18+ 
 - npm/yarn/pnpm
 - Redis (for production caching)
 

@@ -51,7 +51,7 @@ logs
 
 # Cache
 .cache/
-.parcel-cache/
+.parcel-cache/ 
 
 # roo
 .roo

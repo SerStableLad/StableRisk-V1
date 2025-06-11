@@ -293,7 +293,7 @@ export class AuditDiscoveryService {
         if (audits.length >= this.SUFFICIENT_AUDIT_COUNT) {
           console.log(`🚀 Early termination criteria met: Found ${audits.length} audits from ${source} (>= ${this.SUFFICIENT_AUDIT_COUNT})`);
         }
-      } else {
+        } else {
         console.error(`❌ Search task ${index} failed:`, result.reason);
       }
     });
