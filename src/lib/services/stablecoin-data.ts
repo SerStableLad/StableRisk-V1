@@ -1082,7 +1082,7 @@ export class StablecoinDataService {
 
     // Detect depeg incidents
     let depegIncidents = 0
-    let recoveryTimes: number[] = []
+    const recoveryTimes: number[] = []
     let currentIncident: { start: number; startIndex: number } | null = null
     let lastDepegDate: string | undefined
 

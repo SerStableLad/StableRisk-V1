@@ -163,7 +163,7 @@ class CoinMarketCapService {
       const endTime = new Date()
       const startTime = new Date(endTime.getTime() - (days * 24 * 60 * 60 * 1000))
       
-      const response = await this.apiClient.request<CMCHistoricalResponse>('/cryptocurrency/quotes/historical', {
+      const response = await this.apiClient.get<CMCHistoricalResponse>('/cryptocurrency/quotes/historical', {
         params: {
           id: coinId,
           time_start: startTime.toISOString(),
@@ -174,11 +174,11 @@ class CoinMarketCapService {
         }
       })
 
-      if (response.data.status.error_code !== 0) {
-        throw new Error(response.data.status.error_message || 'CMC API error')
+      if (response.status.error_code !== 0) {
+        throw new Error(response.status.error_message || 'CMC API error')
       }
 
-      return response.data.data.quotes.map(quote => {
+      return response.data.quotes.map((quote: any) => {
         const price = quote.quote.USD.price
         const deviation = Math.abs(price - 1.0) // Deviation from $1 peg
         
@@ -199,7 +199,7 @@ class CoinMarketCapService {
    */
   async healthCheck(): Promise<boolean> {
     try {
-      const response = await this.apiClient.request<any>('/key/info')
+      const response = await this.apiClient.get<any>('/key/info')
       return response.data.status?.error_code === 0
     } catch (error) {
       console.error('CMC health check failed:', error)

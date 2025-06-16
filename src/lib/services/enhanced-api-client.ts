@@ -75,9 +75,9 @@ export class EnhancedApiClient {
     const actualTTL = ttl || this.cacheTTL;
     
     // Try to get from cache first
-    const cached = await cacheService.get<T>(actualCacheKey);
+    const cached = await cacheService.get(actualCacheKey);
     if (cached) {
-      return cached;
+      return cached as T;
     }
     
     try {
@@ -112,9 +112,9 @@ export class EnhancedApiClient {
       const actualTTL = ttl || this.cacheTTL;
       
       // Try to get from cache first
-      const cached = await cacheService.get<T>(actualCacheKey);
+      const cached = await cacheService.get(actualCacheKey);
       if (cached) {
-        return cached;
+        return cached as T;
       }
       
       try {

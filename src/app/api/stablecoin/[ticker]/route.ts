@@ -14,7 +14,7 @@ export const revalidate = 0 // Disable Next.js cache for this route, we'll handl
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: { ticker: string } }
+  { params }: { params: Promise<{ ticker: string }> }
 ) {
   const startTime = performance.now()
   const resolvedParams = await params
@@ -368,7 +368,7 @@ async function standardResponse(ticker: string) {
   try {
     // Check full response cache first
     const fullCacheKey = cacheKeys.stablecoinFull(normalizedTicker)
-    let cachedAssessment = await cacheService.get<StablecoinAssessment>(fullCacheKey)
+    const cachedAssessment = await cacheService.get<StablecoinAssessment>(fullCacheKey)
     
     if (cachedAssessment) {
       console.timeEnd(`api-${normalizedTicker}-standard`)

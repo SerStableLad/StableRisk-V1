@@ -320,7 +320,7 @@ export class AuditDiscoveryService {
     const primaryResult = sortedResults[0];
     console.log(`🎯 Primary source: ${primaryResult.source} with ${primaryResult.audits.length} audits`);
     
-    let combinedAudits = [...primaryResult.audits];
+    const combinedAudits = [...primaryResult.audits];
     
     // 🔗 SMART COMBINATION: Add unique audits from other sources
     if (sortedResults.length > 1) {

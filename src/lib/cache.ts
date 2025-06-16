@@ -176,7 +176,8 @@ const cache = {
 export const cacheKeys = {
   stablecoinAssessment: (ticker: string) => `stablecoin:${ticker.toLowerCase()}`,
   stablecoinTier: (ticker: string, tier: 1 | 2 | 3) => `stablecoin:${ticker.toLowerCase()}:tier${tier}`,
-  stablecoinFull: (ticker: string) => `stablecoin:${ticker.toLowerCase()}:full`
+  stablecoinFull: (ticker: string) => `stablecoin:${ticker.toLowerCase()}:full`,
+  coinGeckoSearch: (query: string) => `coingecko:search:${query.toLowerCase()}`
 };
 
 export { cache }; 

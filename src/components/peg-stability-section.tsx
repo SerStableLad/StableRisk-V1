@@ -47,7 +47,7 @@ function generateMockData(ticker: string): PegStabilityData {
   const priceHistory: PriceDataPoint[] = []
   
   // Generate realistic price data with occasional depeg events
-  let basePrice = 1.0
+  const basePrice = 1.0
   const now = new Date()
   
   // Define depeg periods based on actual events

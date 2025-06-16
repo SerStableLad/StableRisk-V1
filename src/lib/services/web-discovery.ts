@@ -78,7 +78,7 @@ export class WebDiscoveryService {
     
     try {
       // Try to get from cache first
-      const cachedHtml = await cacheService.get<string>(actualCacheKey);
+      const cachedHtml = await cacheService.get(actualCacheKey);
       if (cachedHtml) {
         console.log('Cache hit for', url);
         return cachedHtml;
@@ -223,7 +223,7 @@ export class WebDiscoveryService {
         if (!url) continue;
         
         const cacheKey = `${this.cacheKeyPrefix}special_pages:${url}`;
-        const cached = await cacheService.get<DiscoveredLink[]>(cacheKey);
+        const cached = await cacheService.get(cacheKey);
         
         if (cached) {
           console.log('Cache hit for special pages:', url);

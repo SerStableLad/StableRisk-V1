@@ -14,9 +14,9 @@ import { StablecoinDataService } from '@/lib/services/stablecoin-data'
 import { isKnownStablecoin, getKnownStablecoinEntry } from '@/lib/services/stablecoin-mapping-table'
 
 interface AssessmentPageProps {
-  params: {
+  params: Promise<{
     ticker: string
-  }
+  }>
 }
 
 // Get stablecoin assessment data
@@ -612,7 +612,8 @@ async function DashboardContent({ ticker }: { ticker: string }) {
 export default async function AssessmentPage({
   params
 }: AssessmentPageProps) {
-  const cleanTicker = params.ticker.toUpperCase()
+  const { ticker } = await params
+  const cleanTicker = ticker.toUpperCase()
 
   return (
     <DashboardLayout ticker={cleanTicker}>
@@ -627,23 +628,24 @@ export default async function AssessmentPage({
 export async function generateMetadata({
   params,
 }: AssessmentPageProps) {
-  const ticker = params.ticker.toUpperCase()
+  const { ticker } = await params
+  const upperTicker = ticker.toUpperCase()
   
   return {
-    title: `${ticker} Risk Assessment - StableRisk`,
-    description: `Comprehensive risk analysis for ${ticker} stablecoin including peg stability, transparency, liquidity, and audit status.`,
+    title: `${upperTicker} Risk Assessment - StableRisk`,
+    description: `Comprehensive risk analysis for ${upperTicker} stablecoin including peg stability, transparency, liquidity, and audit status.`,
     keywords: 'stablecoin,risk assessment,DeFi,cryptocurrency,USDT,USDC,DAI',
     authors: [{ name: 'SerStableLad' }],
     robots: 'index, follow',
     openGraph: {
-      title: `${ticker} Risk Assessment - StableRisk`,
-      description: `Get detailed risk analysis for ${ticker} stablecoin`,
+      title: `${upperTicker} Risk Assessment - StableRisk`,
+      description: `Get detailed risk analysis for ${upperTicker} stablecoin`,
       type: 'website',
     },
     twitter: {
       card: 'summary',
-      title: `${ticker} Risk Assessment - StableRisk`,
-      description: `Get detailed risk analysis for ${ticker} stablecoin`,
+      title: `${upperTicker} Risk Assessment - StableRisk`,
+      description: `Get detailed risk analysis for ${upperTicker} stablecoin`,
     },
   }
 } 
