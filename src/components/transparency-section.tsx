@@ -66,7 +66,7 @@ function generateMockData(ticker: string): TransparencyData {
           is_verified: true
         }
       ],
-      update_frequency: 'daily',
+      update_frequency: 'monthly',
       is_verified_source: true,
       transparency_issues: []
     },
@@ -174,8 +174,19 @@ const getReputationColor = (score: number) => {
 }
 
 export function TransparencySection({ ticker, data: propData }: TransparencySectionProps) {
-  // Use mock data for development
-  const data = propData || generateMockData(ticker)
+  // Use real data only - no fallback to mock data
+  if (!propData) {
+    return (
+      <div className="space-y-6">
+        <div className="text-center space-y-2">
+          <h2 className="text-3xl font-bold">Transparency & Proof of Reserves</h2>
+          <p className="text-muted-foreground">No transparency data available</p>
+        </div>
+      </div>
+    )
+  }
+  
+  const data = propData
   
   return (
     <div className="space-y-6">

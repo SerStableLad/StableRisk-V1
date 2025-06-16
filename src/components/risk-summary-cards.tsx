@@ -12,7 +12,8 @@ import {
   FileCheck, 
   Clock,
   AlertTriangle,
-  CheckCircle
+  CheckCircle,
+  TrendingUp
 } from "lucide-react"
 
 interface RiskFactor {
@@ -22,12 +23,15 @@ interface RiskFactor {
   lastUpdated?: string
   hasIssues?: boolean
   isVerified?: boolean
+  explanation?: string
+  keyMetrics?: Array<{ label: string; value: string; isGood?: boolean }>
 }
 
 interface RiskSummaryCardsProps {
+  pegStability: RiskFactor
   transparency: RiskFactor
   liquidity: RiskFactor
-  oracle: RiskFactor
+  // oracle: RiskFactor // Disabled oracle functionality
   audit: RiskFactor
 }
 
@@ -40,9 +44,9 @@ function scrollToSection(section: string) {
 }
 
 export function RiskSummaryCards({
+  pegStability,
   transparency,
   liquidity,
-  oracle,
   audit
 }: RiskSummaryCardsProps) {
   
@@ -119,6 +123,41 @@ export function RiskSummaryCards({
           {factor.summary}
         </p>
 
+        {/* Detailed Explanation */}
+        {factor.explanation && (
+          <div className="space-y-2">
+            <div className="text-xs font-medium text-muted-foreground">
+              Why this score?
+            </div>
+            <p className="text-xs text-muted-foreground leading-relaxed bg-muted/30 p-2 rounded">
+              {factor.explanation}
+            </p>
+          </div>
+        )}
+
+        {/* Key Metrics */}
+        {factor.keyMetrics && factor.keyMetrics.length > 0 && (
+          <div className="space-y-2">
+            <div className="text-xs font-medium text-muted-foreground">
+              Key Metrics
+            </div>
+            <div className="space-y-1">
+              {factor.keyMetrics.map((metric, index) => (
+                <div key={index} className="flex justify-between items-center text-xs">
+                  <span className="text-muted-foreground">{metric.label}</span>
+                  <span className={`font-medium ${
+                    metric.isGood === true ? 'text-green-600' : 
+                    metric.isGood === false ? 'text-red-600' : 
+                    'text-foreground'
+                  }`}>
+                    {metric.value}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Status Indicators */}
         <div className="flex items-center justify-between text-xs">
           <div className="flex items-center space-x-3">
@@ -132,7 +171,7 @@ export function RiskSummaryCards({
             {factor.hasIssues && (
               <div className="flex items-center space-x-1 text-yellow-600">
                 <AlertTriangle className="h-3 w-3" />
-                <span>Issues Found</span>
+                <span>Critical/High Issues Found</span>
               </div>
             )}
           </div>
@@ -170,6 +209,13 @@ export function RiskSummaryCards({
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <RiskCard
+          factor={pegStability}
+          icon={TrendingUp}
+          section="peg-stability"
+          description="Price stability vs USD peg"
+        />
+        
+        <RiskCard
           factor={transparency}
           icon={Eye}
           section="transparency"
@@ -181,13 +227,6 @@ export function RiskSummaryCards({
           icon={Droplets}
           section="liquidity"
           description="Market depth & concentration"
-        />
-        
-        <RiskCard
-          factor={oracle}
-          icon={Network}
-          section="oracle"
-          description="Price feed security"
         />
         
         <RiskCard

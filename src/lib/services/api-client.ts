@@ -56,6 +56,9 @@ export class ApiClient {
     const url = this.buildUrl(endpoint, params)
     const requestHeaders = { ...this.defaultHeaders, ...headers }
 
+    console.log(`[ApiClient] Making ${method} request to: ${url}`)
+    console.log(`[ApiClient] Headers:`, requestHeaders)
+
     // Create AbortController for timeout
     const controller = new AbortController()
     const timeoutId = setTimeout(() => controller.abort(), timeout)
@@ -65,6 +68,8 @@ export class ApiClient {
     // Retry logic
     for (let attempt = 0; attempt <= retries; attempt++) {
       try {
+        console.log(`[ApiClient] Attempt ${attempt + 1}/${retries + 1}`)
+        
         const response = await fetch(url, {
           method,
           headers: requestHeaders,
@@ -72,12 +77,17 @@ export class ApiClient {
         })
 
         clearTimeout(timeoutId)
+        
+        console.log(`[ApiClient] Response status: ${response.status} ${response.statusText}`)
 
         if (!response.ok) {
+          const errorText = await response.text()
+          console.log(`[ApiClient] Error response body:`, errorText)
           throw new Error(`HTTP ${response.status}: ${response.statusText}`)
         }
 
         const data = await response.json()
+        console.log(`[ApiClient] Response data received successfully`)
         
         return {
           data,
@@ -86,6 +96,7 @@ export class ApiClient {
         }
       } catch (error) {
         lastError = error as Error
+        console.log(`[ApiClient] Request failed on attempt ${attempt + 1}:`, error)
         
         // Don't retry on certain errors
         if (
@@ -93,17 +104,22 @@ export class ApiClient {
           (error.name === 'AbortError' || 
            error.message.includes('4')) // 4xx errors shouldn't be retried
         ) {
+          console.log(`[ApiClient] Not retrying due to error type: ${error.name}`)
           break
         }
 
         // Wait before retry (exponential backoff)
         if (attempt < retries) {
-          await new Promise(resolve => setTimeout(resolve, 1000 * Math.pow(2, attempt)))
+          const waitTime = 1000 * Math.pow(2, attempt)
+          console.log(`[ApiClient] Waiting ${waitTime}ms before retry...`)
+          await new Promise(resolve => setTimeout(resolve, waitTime))
         }
       }
     }
 
     clearTimeout(timeoutId)
+    
+    console.log(`[ApiClient] All attempts failed. Last error:`, lastError)
     
     // Transform error into our ApiError format
     const apiError: ApiError = {

@@ -391,8 +391,19 @@ const getRiskLevelBadge = (level: string) => {
 }
 
 export function LiquiditySection({ ticker, data: propData }: LiquiditySectionProps) {
-  // Use mock data for development
-  const data = propData || generateMockData(ticker)
+  // Use real data only - no fallback to mock data
+  if (!propData) {
+    return (
+      <div className="space-y-6">
+        <div className="text-center space-y-2">
+          <h2 className="text-3xl font-bold">Liquidity Analysis & Market Depth</h2>
+          <p className="text-muted-foreground">No liquidity data available</p>
+        </div>
+      </div>
+    )
+  }
+  
+  const data = propData
   
   return (
     <div className="space-y-6">
@@ -578,7 +589,7 @@ export function LiquiditySection({ ticker, data: propData }: LiquiditySectionPro
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="space-y-4">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {data.exchanges.map((exchange, index) => (
               <div key={index} className="border rounded-lg p-4">
                 <div className="flex items-center justify-between mb-4">

@@ -3,6 +3,7 @@ import { config } from '@/lib/config'
 import { AuditInfo } from '@/lib/types'
 import { cacheService } from './cache-service'
 import { metricsService } from './metrics-service'
+import { jsScraperService } from './js-scraper'
 import { 
   getKnownAuditFolderUrl, 
   isKnownStablecoin, 
@@ -90,19 +91,6 @@ export class AuditDiscoveryService {
     'access control'
   ]
 
-  // Site-specific optimized paths map
-  private readonly SITE_AUDIT_PATH_MAP: Record<string, string[]> = {
-    'makerdao.com': ['/security/audits', '/technical/audits'],
-    'circle.com': ['/transparency/audits', '/security/audits'],
-    'tether.to': ['/transparency', '/security'],
-    'frax.finance': ['/docs/security', '/docs/audits'],
-    'gitbook.io': ['/security', '/audits', '/security/audits'],
-    'notion.site': ['/security', '/audits'],
-    'compound.finance': ['/docs/security', '/security/audits'],
-    'aave.com': ['/security', '/audits'],
-    'uniswap.org': ['/security', '/audits']
-  }
-
   // Configuration constants
   private readonly MAX_CONCURRENT_REQUESTS = 5;
 
@@ -126,14 +114,14 @@ export class AuditDiscoveryService {
   ): Promise<AuditInfo[]> {
     // Start performance tracking
     const startTime = Date.now();
-    metricsService.recordApiCall(`auditDiscovery:${stablecoinSymbol}`);
+    // Note: We'll record the API duration at the end when we have the timing
     
     // Check cache first
     const cacheKey = `audit:${stablecoinSymbol}`;
-    const cachedAudits = cacheService.get<AuditInfo[]>(cacheKey);
-    if (cachedAudits) {
+    const cachedAudits = await cacheService.get(cacheKey);
+    if (cachedAudits && Array.isArray(cachedAudits)) {
       console.log(`✅ Using cached audits for ${stablecoinSymbol}`);
-      return cachedAudits;
+      return cachedAudits as AuditInfo[];
     }
 
     // 🏆 PRIORITY 1: Check mapping table for curated audit URLs
@@ -479,7 +467,7 @@ export class AuditDiscoveryService {
       console.log(`🔍 Processing ${docsSite.type} docs site: ${docsSite.url}`)
       
       // Get optimized paths for this site
-      const auditPaths = this.getOptimizedPathsForSite(docsSite.url)
+      const auditPaths = this.getGenericAuditPaths()
       
       // Process each path
       for (const path of auditPaths) {
@@ -544,38 +532,21 @@ export class AuditDiscoveryService {
   /**
    * Get optimized paths for a specific site based on domain pattern matching
    */
-  private getOptimizedPathsForSite(siteUrl: string): string[] {
-    try {
-      const url = new URL(siteUrl);
-      const hostname = url.hostname;
-      
-      // Check for exact hostname match
-      for (const [domain, paths] of Object.entries(this.SITE_AUDIT_PATH_MAP)) {
-        if (hostname === domain || hostname.endsWith(`.${domain}`)) {
-          console.log(`  🔍 Using optimized paths for ${domain}`);
-          return ['', ...paths]; // Always include the root
-        }
-      }
-      
-      // Check for pattern matching
-      if (hostname.includes('gitbook')) {
-        return ['', ...this.SITE_AUDIT_PATH_MAP['gitbook.io']];
-      }
-      if (hostname.includes('notion')) {
-        return ['', ...this.SITE_AUDIT_PATH_MAP['notion.site']];
-      }
-      
-      // Default paths for unknown sites
-      return [
-        '',  // Root of docs site
-        '/audits',
-        '/security',
-        '/security/audits'
-      ];
-    } catch (error) {
-      // Fallback to basic paths
-      return ['', '/audits', '/security'];
-    }
+  /**
+   * 🎯 Get generic audit paths for documentation sites
+   * Simplified approach using common audit path patterns
+   */
+  private getGenericAuditPaths(): string[] {
+    return [
+      '',  // Root of docs site
+      '/audits',
+      '/security',
+      '/security/audits',
+      '/docs/security',
+      '/docs/audits',
+      '/technical/audits',
+      '/transparency/audits'
+    ];
   }
 
   /**
@@ -702,49 +673,112 @@ export class AuditDiscoveryService {
 
   /**
    * 📄 Scrape dev/tech documentation page for audit information
+   * Enhanced with JavaScript scraping for GitBook and other JS-rendered sites
    */
   private async scrapeDevTechDocsPage(url: string, symbol: string): Promise<AuditInfo[]> {
     try {
+      // First, try basic fetch to see if content is available
       const response = await fetch(url)
       if (!response.ok) return []
 
       const html = await response.text()
+      
+      // Check if this is a JavaScript-rendered site that needs special handling
+      const needsJavaScriptScraping = this.detectJavaScriptRenderedSite(url, html)
+      
+      let finalHtml = html
+      let auditLinks: Array<{ href: string; text: string }> = []
+      
+      if (needsJavaScriptScraping) {
+        console.log(`🔍 Detected JavaScript-rendered site, using Puppeteer for ${url}`)
+        
+        // Use JavaScript scraper to get rendered content
+        const scrapedContent = await jsScraperService.scrapePage(url, {
+          waitTime: 5000, // Wait longer for JS-heavy sites
+          timeout: 20000
+        })
+        
+        if (scrapedContent.success) {
+          finalHtml = scrapedContent.html
+          auditLinks = scrapedContent.links.filter(link => this.isAuditRelatedUrl(link.href))
+          console.log(`✅ JavaScript scraping found ${auditLinks.length} audit-related links`)
+        } else {
+          console.warn(`⚠️ JavaScript scraping failed for ${url}, falling back to basic HTML`)
+        }
+      }
+      
       const audits: AuditInfo[] = []
 
-      // Enhanced patterns for different documentation formats
-      const auditPatterns = [
-        // Standard href links
-        /href=["']([^"']*(?:audit|security)[^"']*)["']/gi,
-        // PDF files
-        /href=["']([^"']*\.pdf[^"']*)["']/gi,
-        // Audit firm names in links
-        /href=["']([^"']*(?:trail.of.bits|consensys|openzeppelin|quantstamp|chainsecurity|certik|peckshield|three.sigma|kirill.fedoseev|sherlock)[^"']*)["']/gi,
-      ]
-
-      // Look for audit-related links and content using patterns
-      let match
-      for (const pattern of auditPatterns) {
-        while ((match = pattern.exec(html)) !== null) {
+      // If we have audit links from JavaScript scraping, use them
+      if (auditLinks.length > 0) {
+        for (const link of auditLinks) {
           try {
-            let auditUrl = match[1] || match[0]
-            
-            // Skip if it doesn't look like an audit-related URL
-            if (!this.isAuditRelatedUrl(auditUrl)) {
-              continue
-            }
+            let auditUrl = link.href
             
             // Convert relative URLs to absolute
             if (auditUrl.startsWith('/')) {
               const baseUrl = new URL(url).origin
               auditUrl = `${baseUrl}${auditUrl}`
-            } else if (!auditUrl.startsWith('http')) {
-              continue
             }
 
             // Analyze the content to determine if it's a real audit
-            const auditInfo = await this.analyzeDevTechAuditLink(auditUrl, html, symbol)
-            if (auditInfo) {
-              audits.push(auditInfo)
+            const auditInfo = await this.analyzeDevTechAuditLink(auditUrl, finalHtml, symbol)
+            if (auditInfo.length > 0) {
+              audits.push(...auditInfo)
+            }
+          } catch (linkError) {
+            continue
+          }
+        }
+      } else {
+        // Fall back to pattern-based extraction from HTML
+        const auditPatterns = [
+          // Standard href links
+          /href=["']([^"']*(?:audit|security)[^"']*)["']/gi,
+          // PDF files
+          /href=["']([^"']*\.pdf[^"']*)["']/gi,
+          // Audit firm names in links
+          /href=["']([^"']*(?:trail.of.bits|consensys|openzeppelin|quantstamp|chainsecurity|certik|peckshield|three.sigma|kirill.fedoseev|sherlock)[^"']*)["']/gi,
+        ]
+
+        // Collect all unique URLs first to avoid duplicates
+        const uniqueUrls = new Set<string>()
+        
+        // Look for audit-related links and content using patterns
+        let match
+        for (const pattern of auditPatterns) {
+          while ((match = pattern.exec(finalHtml)) !== null) {
+            try {
+              let auditUrl = match[1] || match[0]
+              
+              // Skip if it doesn't look like an audit-related URL
+              if (!this.isAuditRelatedUrl(auditUrl)) {
+                continue
+              }
+              
+              // Convert relative URLs to absolute
+              if (auditUrl.startsWith('/')) {
+                const baseUrl = new URL(url).origin
+                auditUrl = `${baseUrl}${auditUrl}`
+              } else if (!auditUrl.startsWith('http')) {
+                continue
+              }
+
+              // Add to unique URLs set
+              uniqueUrls.add(auditUrl)
+            } catch (linkError) {
+              continue
+            }
+          }
+        }
+
+        // Process each unique URL only once
+        for (const auditUrl of uniqueUrls) {
+          try {
+            // Analyze the content to determine if it's a real audit
+            const auditInfo = await this.analyzeDevTechAuditLink(auditUrl, finalHtml, symbol)
+            if (auditInfo.length > 0) {
+              audits.push(...auditInfo)
             }
           } catch (linkError) {
             continue
@@ -752,11 +786,46 @@ export class AuditDiscoveryService {
         }
       }
 
-      return audits
+      // Deduplicate audits at the method level as well
+      const deduplicatedAudits = this.deduplicateAudits(audits)
+      console.log(`🔍 Scraped ${url}: ${audits.length} → ${deduplicatedAudits.length} unique audits`)
+      
+      return deduplicatedAudits
     } catch (error) {
       console.error(`Error scraping dev/tech docs page ${url}:`, error)
       return []
     }
+  }
+
+  /**
+   * 🔍 Detect if a site requires JavaScript rendering
+   */
+  private detectJavaScriptRenderedSite(url: string, html: string): boolean {
+    // Check for known JavaScript-rendered documentation platforms
+    const jsRenderedPlatforms = [
+      'gitbook.io',
+      'gitbook.com', 
+      'notion.site',
+      'docs.usdt0.to', // Specific case for USDT
+      'app.gitbook.com'
+    ]
+    
+    // Check URL for known platforms
+    const urlRequiresJS = jsRenderedPlatforms.some(platform => url.includes(platform))
+    
+    // Check HTML content for signs of JavaScript rendering
+    const htmlRequiresJS = (
+      html.includes('window.__NUXT__') ||
+      html.includes('window.__NEXT_DATA__') ||
+      html.includes('react-root') ||
+      html.includes('vue-app') ||
+      html.includes('gitbook') ||
+      html.includes('Loading...') ||
+      html.includes('Please enable JavaScript') ||
+      (html.length < 1000 && html.includes('<script')) // Very short HTML with scripts
+    )
+    
+    return urlRequiresJS || htmlRequiresJS
   }
 
   /**
@@ -776,45 +845,188 @@ export class AuditDiscoveryService {
   }
 
   /**
-   * 🔍 Analyze a potential audit link from dev/tech documentation
+   * 🔍 Detect if a URL points to a documentation page that lists audits vs an actual audit report
    */
-  private async analyzeDevTechAuditLink(url: string, pageContext: string, symbol: string): Promise<AuditInfo | null> {
+  private isDocumentationPage(url: string, html: string): boolean {
+    // URL patterns that indicate documentation pages
+    const docUrlPatterns = [
+      /docs\.[^\/]+\.[^\/]+/i,  // docs.[domain].[TLD] pattern
+      /\/docs\//i,              // /docs/ in path
+      /\/documentation\//i,     // /documentation/ in path
+      /\/security\//i,          // /security/ in path
+      /gitbook\.io/i,           // GitBook documentation
+      /notion\.site/i,          // Notion documentation
+      /readme\.io/i             // ReadMe documentation
+    ];
+    
+    // Check if URL matches documentation patterns
+    const isDocUrl = docUrlPatterns.some(pattern => pattern.test(url));
+    
+    // Content patterns that indicate documentation pages
+    const docContentPatterns = [
+      /audit\s+report/gi,
+      /security\s+audit/gi,
+      /third.?party\s+audit/gi,
+      /audit\s+firm/gi,
+      /security\s+assessment/gi,
+      /penetration\s+test/gi
+    ];
+    
+    // Check if HTML content contains multiple audit-related terms (indicating it lists audits)
+    const auditMentions = docContentPatterns.reduce((count, pattern) => {
+      const matches = html.match(pattern);
+      return count + (matches ? matches.length : 0);
+    }, 0);
+    
+    // If URL is documentation-like AND content mentions audits multiple times, it's likely a doc page
+    return isDocUrl && auditMentions >= 2;
+  }
+
+  /**
+   * 🔍 Extract actual audit firm information from a documentation page
+   */
+  private extractAuditLinksFromDocPage(html: string, baseUrl: string): Array<{firm: string, url?: string}> {
+    const auditFirms: Array<{firm: string, url?: string}> = []
+    const foundFirms = new Set<string>() // Deduplicate firms
+    
+    // Known audit firms to look for
+    const knownFirms = [
+      'Guardian', 'ChainSecurity', 'Paladin', 'Chaos Labs',
+      'Trail of Bits', 'ConsenSys', 'OpenZeppelin', 'Quantstamp',
+      'Certik', 'PeckShield', 'SlowMist', 'BlockSec', 'Hacken'
+    ]
+    
+    // Look for audit firm names in the HTML
+    for (const firm of knownFirms) {
+      const firmPattern = new RegExp(`\\b${firm}\\b`, 'gi')
+      if (firmPattern.test(html) && !foundFirms.has(firm.toLowerCase())) {
+        foundFirms.add(firm.toLowerCase())
+        
+        // Try to find a link associated with this firm
+        const linkPattern = new RegExp(`<a[^>]*href=[\"']([^\"']*)[^>]*[^<]*${firm}[^<]*</a>`, 'gi')
+        const linkMatch = linkPattern.exec(html)
+        const firmUrl = linkMatch ? linkMatch[1] : undefined
+        
+        auditFirms.push({
+          firm,
+          url: firmUrl && firmUrl.startsWith('http') ? firmUrl : undefined
+        })
+      }
+    }
+    
+    return auditFirms
+  }
+
+  /**
+   * 🔍 Validate if a URL actually points to an audit report (not just documentation)
+   */
+  private async validateAuditReport(url: string): Promise<boolean> {
+    try {
+      // PDF files are usually actual audit reports
+      if (url.toLowerCase().includes('.pdf')) {
+        return true
+      }
+      
+      // Try to fetch the content to validate
+      const response = await fetch(url, { method: 'HEAD' })
+      if (!response.ok) {
+        return false
+      }
+      
+      const contentType = response.headers.get('content-type') || ''
+      
+      // PDF content type indicates actual audit report
+      if (contentType.includes('application/pdf')) {
+        return true
+      }
+      
+      // For HTML pages, we'd need to check content, but for now assume they could be valid
+      // This is a conservative approach to avoid false negatives
+      return true
+      
+    } catch (error) {
+      // If we can't validate, assume it might be valid to avoid false negatives
+      return true
+    }
+  }
+
+  /**
+   * 🔍 Analyze a dev/tech documentation audit link
+   */
+  private async analyzeDevTechAuditLink(url: string, pageContext: string, symbol: string): Promise<AuditInfo[]> {
     try {
       // Check if this looks like an audit URL
-      const auditKeywords = ['audit', 'security', 'report', 'pdf']
-      const hasAuditKeyword = auditKeywords.some(keyword => 
-        url.toLowerCase().includes(keyword)
-      )
+      if (!this.isAuditRelatedUrl(url)) {
+        return [];
+      }
 
-      if (!hasAuditKeyword) return null
+      // Fetch the page content to analyze it
+      let html = ''
+      try {
+        const response = await fetch(url, { 
+          headers: { 'User-Agent': 'Mozilla/5.0 (compatible; StableRisk/1.0)' },
+          signal: AbortSignal.timeout(10000)
+        })
+        if (response.ok) {
+          html = await response.text()
+        }
+      } catch (error) {
+        console.warn(`Failed to fetch audit page ${url}:`, error)
+      }
 
-      // Extract audit firm from URL or context
+      // Check if this is a documentation page that lists audits
+      if (this.isDocumentationPage(url, html)) {
+        console.log(`📋 Detected documentation page: ${url}`)
+        
+        // Extract actual audit firms from the documentation page
+        const auditFirms = this.extractAuditLinksFromDocPage(html, url)
+        
+        if (auditFirms.length > 0) {
+          console.log(`🔍 Found ${auditFirms.length} audit firms on documentation page:`, auditFirms.map(f => f.firm))
+          
+          // Return multiple audit entries for each firm found
+          return auditFirms.map(firmInfo => ({
+            firm: firmInfo.firm,
+            date: this.extractDateFromUrl(firmInfo.url || url) || 'Recent',
+            outstanding_issues: 0,
+            critical_high_issues: 0,
+            resolution_status: 'resolved' as const,
+            report_url: firmInfo.url || url,
+            is_top_tier: this.isTopTierFirm(firmInfo.firm)
+          }))
+        }
+        
+        // If no firms found on documentation page, don't create any audit entries
+        return []
+      }
+
+      // If it's not a documentation page, treat as a single audit report
       const firmName = this.extractFirmFromUrl(url) || 
                       this.extractFirmFromContext(pageContext, url) ||
                       'Unknown Firm'
 
-      // Extract date from URL or context 
+      // Don't create audit entries for unknown firms
+      if (firmName === 'Unknown Firm') {
+        return []
+      }
+
       const auditDate = this.extractDateFromUrl(url) || 
                        this.extractDate(url, url, pageContext) ||
                        'Unknown Date'
 
-      // Build audit info
-      const auditInfo: AuditInfo = {
+      return [{
         firm: firmName,
         date: auditDate,
-        report_url: url,
         outstanding_issues: 0,
         critical_high_issues: 0,
-        resolution_status: 'pending' as const,
+        resolution_status: 'resolved' as const,
+        report_url: url,
         is_top_tier: this.isTopTierFirm(firmName)
-      }
-
-      console.log(`📋 Created audit info from dev/tech docs:`, auditInfo)
-      return auditInfo
+      }]
 
     } catch (error) {
-      console.error(`Error analyzing dev/tech audit link ${url}:`, error)
-      return null
+      console.error(`Error analyzing audit link ${url}:`, error)
+      return []
     }
   }
 

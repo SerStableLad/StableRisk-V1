@@ -268,8 +268,19 @@ const getScoreTrend = (score: number) => {
 }
 
 export function AuditSection({ ticker, data: propData }: AuditSectionProps) {
-  // Use mock data for development
-  const data = propData || generateMockData(ticker)
+  // Use real data only - no fallback to mock data
+  if (!propData) {
+    return (
+      <div className="space-y-6">
+        <div className="text-center space-y-2">
+          <h2 className="text-3xl font-bold">Security Audits & Code Review</h2>
+          <p className="text-muted-foreground">No audit data available</p>
+        </div>
+      </div>
+    )
+  }
+  
+  const data = propData
   
   const daysSinceLastAudit = Math.floor((Date.now() - new Date(data.last_audit_date).getTime()) / (1000 * 60 * 60 * 24))
   const nextAuditDays = data.next_scheduled_audit 
@@ -389,7 +400,7 @@ export function AuditSection({ ticker, data: propData }: AuditSectionProps) {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="space-y-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {data.recent_audits.map((audit, index) => (
               <div key={index} className="border rounded-lg p-4">
                 <div className="flex items-center justify-between mb-4">
@@ -418,17 +429,7 @@ export function AuditSection({ ticker, data: propData }: AuditSectionProps) {
                   </div>
                 </div>
                 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-                  <div>
-                    <p className="text-sm text-muted-foreground">Overall Score</p>
-                    <div className="flex items-center space-x-2">
-                      <p className={`text-lg font-bold ${getScoreColor(audit.overall_score)}`}>
-                        {audit.overall_score}/100
-                      </p>
-                      <Progress value={audit.overall_score} className="flex-1" />
-                    </div>
-                  </div>
-                  
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                   <div>
                     <p className="text-sm text-muted-foreground">Audit Date</p>
                     <div className="flex items-center space-x-2">
@@ -440,7 +441,7 @@ export function AuditSection({ ticker, data: propData }: AuditSectionProps) {
                   <div>
                     <p className="text-sm text-muted-foreground">Findings</p>
                     <p className="font-medium">
-                      {audit.findings.length} issue{audit.findings.length !== 1 ? 's' : ''} found
+                      {audit.findings.length} critical/high issue{audit.findings.length !== 1 ? 's' : ''} found
                     </p>
                   </div>
                 </div>

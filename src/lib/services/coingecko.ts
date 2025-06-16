@@ -1,6 +1,7 @@
 import { createApiClient } from './api-client'
 import { config, endpoints } from '@/lib/config'
 import { StablecoinInfo, PricePoint } from '@/lib/types'
+import { getKnownGenesisDate } from './stablecoin-mapping-table'
 
 // CoinGecko API response interfaces
 interface CoinGeckoApiResponse {
@@ -72,10 +73,10 @@ export class CoinGeckoService {
   private client: ReturnType<typeof createApiClient>
 
   constructor() {
+    // For CoinGecko free tier, don't use API key
     this.client = createApiClient(
-      config.coingecko.baseUrl,
-      config.coingecko.apiKey,
-      'x-cg-demo-api-key'
+      config.coingecko.baseUrl
+      // Removed API key for free tier
     )
   }
 
@@ -84,7 +85,9 @@ export class CoinGeckoService {
    */
   async searchStablecoin(ticker: string): Promise<string | null> {
     try {
-      console.log(`Searching CoinGecko for ticker: ${ticker}`)
+      console.log(`[CoinGecko] Searching for ticker: ${ticker}`)
+      console.log(`[CoinGecko] API client base URL: ${this.client}`)
+      
       const response = await this.client.get<any>(
         '/search',
         {
@@ -94,7 +97,8 @@ export class CoinGeckoService {
         }
       )
 
-      console.log('CoinGecko search response:', response)
+      console.log(`[CoinGecko] Search response status: Success`)
+      console.log(`[CoinGecko] Found ${response.coins?.length || 0} coins`)
 
       // Find exact match by symbol
       const coin = response.coins?.find((c: any) => 
@@ -102,14 +106,20 @@ export class CoinGeckoService {
       )
 
       if (!coin) {
-        console.warn(`No exact match found for ${ticker}`)
+        console.warn(`[CoinGecko] No exact match found for ${ticker}`)
+        console.log(`[CoinGecko] Available coins:`, response.coins?.map((c: any) => ({ id: c.id, symbol: c.symbol })))
         return null
       }
 
-      console.log(`Found CoinGecko ID for ${ticker}: ${coin.id}`)
+      console.log(`[CoinGecko] Found CoinGecko ID for ${ticker}: ${coin.id}`)
       return coin.id
     } catch (error) {
-      console.error('CoinGecko search error:', error)
+      console.error(`[CoinGecko] Search error for ${ticker}:`, error)
+      console.error(`[CoinGecko] Error details:`, {
+        name: error instanceof Error ? error.name : 'Unknown',
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined
+      })
       return null
     }
   }
@@ -136,6 +146,13 @@ export class CoinGeckoService {
       // Determine pegging type based on symbol and description
       const pegType = this.determinePeggingType(data.symbol, data.description?.en || '')
 
+      // Extract blockchain platforms from the platforms field
+      const blockchains = this.extractBlockchainPlatforms(data as any)
+
+      // Get genesis date from mapping table first, then fall back to API data
+      const mappingGenesisDate = getKnownGenesisDate(data.symbol)
+      const genesisDate = mappingGenesisDate || data.genesis_date || 'Unknown'
+
       return {
         id: data.id,
         symbol: data.symbol.toUpperCase(),
@@ -143,8 +160,8 @@ export class CoinGeckoService {
         image: data.image.large,
         current_price: data.market_data.current_price.usd,
         market_cap: data.market_data.market_cap.usd,
-        genesis_date: data.genesis_date || 'Unknown',
-        blockchain: data.links?.blockchain_site?.[0] || 'Unknown',
+        genesis_date: genesisDate,
+        blockchain: blockchains,
         pegging_type: pegType,
         // Include official links from CoinGecko
         official_links: {
@@ -234,11 +251,130 @@ export class CoinGeckoService {
     }
   }
 
+    /**
+   * Extract blockchain platforms from CoinGecko data
+   */
+  private extractBlockchainPlatforms(data: any): string {
+    try {
+      // Get platforms data from CoinGecko response
+      const platforms = data.platforms || {}
+      const categories = data.categories || []
+      
+      // Map CoinGecko platform IDs to readable blockchain names
+      const platformMap: Record<string, string> = {
+        'ethereum': 'Ethereum',
+        'binance-smart-chain': 'BNB Smart Chain',
+        'polygon-pos': 'Polygon',
+        'avalanche': 'Avalanche',
+        'solana': 'Solana',
+        'tron': 'Tron',
+        'arbitrum-one': 'Arbitrum',
+        'optimistic-ethereum': 'Optimism',
+        'fantom': 'Fantom',
+        'harmony-shard-0': 'Harmony',
+        'klay-token': 'Klaytn',
+        'near-protocol': 'NEAR Protocol',
+        'celo': 'Celo',
+        'the-open-network': 'TON',
+        'kava': 'Kava',
+        'aptos': 'Aptos',
+        'sui': 'Sui',
+        'cardano': 'Cardano',
+        'algorand': 'Algorand',
+        'stellar': 'Stellar',
+        'cosmos': 'Cosmos',
+        'osmosis': 'Osmosis',
+        'terra': 'Terra',
+        'terra-2': 'Terra 2.0',
+        'cronos': 'Cronos',
+        'moonbeam': 'Moonbeam',
+        'moonriver': 'Moonriver',
+        'aurora': 'Aurora',
+        'xdai': 'Gnosis Chain',
+        'huobi-token': 'HECO',
+        'okex-chain': 'OKC'
+      }
+      
+      // Extract blockchain names from platforms
+      const blockchainNames: string[] = []
+      
+      for (const [platformId, contractAddress] of Object.entries(platforms)) {
+        if (platformId && contractAddress && platformId !== '') {
+          const readableName = platformMap[platformId] || this.formatPlatformName(platformId)
+          if (readableName && !blockchainNames.includes(readableName)) {
+            blockchainNames.push(readableName)
+          }
+        }
+      }
+      
+      // If no platforms found, try to infer from categories or asset_platform_id
+      if (blockchainNames.length === 0) {
+        if (data.asset_platform_id) {
+          const readableName = platformMap[data.asset_platform_id] || this.formatPlatformName(data.asset_platform_id)
+          if (readableName) {
+            blockchainNames.push(readableName)
+          }
+        }
+        
+        // Try to infer from categories
+        for (const category of categories) {
+          if (category.includes('Ecosystem')) {
+            const ecosystemName = category.replace(' Ecosystem', '')
+            if (!blockchainNames.includes(ecosystemName)) {
+              blockchainNames.push(ecosystemName)
+            }
+          }
+        }
+      }
+      
+      // If still no blockchains found, check if it's a native token
+      if (blockchainNames.length === 0) {
+        // For tokens like USDN that might be native to a specific chain
+        if (data.links?.blockchain_site?.[0]) {
+          const url = data.links.blockchain_site[0]
+          if (url.includes('mintscan.io/noble')) {
+            blockchainNames.push('Noble')
+          } else if (url.includes('etherscan.io')) {
+            blockchainNames.push('Ethereum')
+          } else if (url.includes('bscscan.com')) {
+            blockchainNames.push('BNB Smart Chain')
+          } else if (url.includes('polygonscan.com')) {
+            blockchainNames.push('Polygon')
+          }
+          // Add more blockchain detection patterns as needed
+        }
+      }
+      
+      // Return formatted string
+      if (blockchainNames.length === 0) {
+        return 'Unknown'
+      } else if (blockchainNames.length === 1) {
+        return blockchainNames[0]
+      } else {
+        return blockchainNames.join(', ')
+      }
+      
+    } catch (error) {
+      console.error('Error extracting blockchain platforms:', error)
+      return 'Unknown'
+    }
+  }
+
+  /**
+   * Format platform name for display
+   */
+  private formatPlatformName(platformId: string): string {
+    return platformId
+      .split('-')
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(' ')
+  }
+
   /**
    * Determine pegging type based on coin data
    */
   private determinePeggingType(
-    symbol: string, 
+    symbol: string,
     description: string
   ): StablecoinInfo['pegging_type'] {
     const desc = description.toLowerCase()

@@ -55,11 +55,11 @@ export class TransparencyService {
     
     // Start performance tracking
     const startTime = Date.now();
-    metricsService.recordApiCall(`transparencyBasic:${symbol}`);
+    // Start performance tracking - no initial call needed
     
     // Check cache first for Tier 2 data
     const cacheKey = `transparency:basic:${symbol}`;
-    const cachedData = cacheService.get<BasicTransparencyData>(cacheKey);
+    const cachedData = await cacheService.get(cacheKey) as BasicTransparencyData;
     if (cachedData) {
       console.log(`✅ Using cached basic transparency data for ${symbol}`);
       metricsService.recordApiDuration(`transparencyBasic:${symbol}`, Date.now() - startTime);
@@ -171,11 +171,10 @@ export class TransparencyService {
     
     // Start performance tracking
     const startTime = Date.now();
-    metricsService.recordApiCall(`transparencyFull:${symbol}`);
     
     // Check cache first for Tier 3 data
     const cacheKey = `transparency:full:${symbol}`;
-    const cachedData = cacheService.get<TransparencyData>(cacheKey);
+    const cachedData = await cacheService.get(cacheKey) as TransparencyData;
     if (cachedData) {
       console.log(`✅ Using cached transparency data for ${symbol}`);
       return cachedData;
@@ -203,9 +202,10 @@ export class TransparencyService {
             const attestationUrl = getKnownAttestationUrl(symbol)
             
             // Merge mapping table data with live analysis
+            // PRIORITY: Keep curated mapping table data, only enhance with live data where mapping is missing
             const enhancedData = {
-              ...knownData,
               ...liveAnalysis,
+              ...knownData, // Mapping table data takes priority
               dashboard_url: knownData.dashboard_url, // Keep the curated URL
               attestation_url: attestationUrl || undefined // Add attestation URL if available
             }

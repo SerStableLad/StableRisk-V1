@@ -4,13 +4,14 @@ import React from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts'
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, ReferenceArea, Brush } from 'recharts'
 import { AlertTriangle, TrendingUp, TrendingDown, Activity } from 'lucide-react'
 
 interface PriceDataPoint {
   date: string
   price: number
   timestamp: number
+  isDepeg?: boolean
 }
 
 interface DepegEvent {
@@ -49,29 +50,44 @@ function generateMockData(ticker: string): PegStabilityData {
   let basePrice = 1.0
   const now = new Date()
   
+  // Define depeg periods based on actual events
+  const depegPeriods = ticker === 'USDT' ? [
+    { start: '2024-10-15', end: '2024-10-16' },
+    { start: '2024-03-11', end: '2024-03-12' }
+  ] : ticker === 'DAI' ? [
+    { start: '2024-08-20', end: '2024-08-21' }
+  ] : []
+  
   for (let i = days; i >= 0; i--) {
     const date = new Date(now)
     date.setDate(date.getDate() - i)
+    const dateStr = date.toISOString().split('T')[0]
+    
+    // Check if this date is within a depeg period
+    const isDepegPeriod = depegPeriods.some(period => 
+      dateStr >= period.start && dateStr <= period.end
+    )
     
     // Add some volatility but mostly stay near $1
     let price = basePrice
     
-    // Simulate occasional depeg events
-    if (ticker === 'USDT' && i < 50 && i > 40) {
-      // USDT depeg simulation
-      price = 0.985 + Math.random() * 0.02
-    } else if (ticker === 'DAI' && i < 100 && i > 90) {
-      // DAI depeg simulation  
-      price = 1.015 + Math.random() * 0.01
+    if (isDepegPeriod) {
+      // Simulate depeg events with more significant deviation
+      if (ticker === 'USDT') {
+        price = 0.985 + Math.random() * 0.02 // 1.5-3.5% below peg
+      } else if (ticker === 'DAI') {
+        price = 1.012 + Math.random() * 0.008 // 1.2-2.0% above peg
+      }
     } else {
       // Normal fluctuation ±0.5%
       price = basePrice + (Math.random() - 0.5) * 0.01
     }
     
     priceHistory.push({
-      date: date.toISOString().split('T')[0],
+      date: dateStr,
       price: Math.max(0.95, Math.min(1.05, price)),
-      timestamp: date.getTime()
+      timestamp: date.getTime(),
+      isDepeg: isDepegPeriod
     })
   }
   
@@ -97,6 +113,21 @@ function generateMockData(ticker: string): PegStabilityData {
         max_deviation: 1.5,
         duration_days: 1,
         recovery_speed: '12 hours'
+      },
+      {
+        start_date: '2024-03-11',
+        end_date: '2024-03-12',
+        max_deviation: 0.8,
+        duration_days: 1,
+        recovery_speed: '8 hours'
+      }
+    ] : ticker === 'DAI' ? [
+      {
+        start_date: '2024-08-20',
+        end_date: '2024-08-21',
+        max_deviation: 1.2,
+        duration_days: 1,
+        recovery_speed: '6 hours'
       }
     ] : [],
     is_currently_depegged: false,
@@ -133,8 +164,19 @@ const CustomTooltip = ({ active, payload, label }: any) => {
 }
 
 export function PegStabilitySection({ ticker, data: propData }: PegStabilitySectionProps) {
-  // Use mock data for development
-  const data = propData || generateMockData(ticker)
+  // Use real data only - no fallback to mock data
+  if (!propData) {
+    return (
+      <div className="space-y-6">
+        <div className="text-center space-y-2">
+          <h2 className="text-3xl font-bold">Peg Stability Analysis</h2>
+          <p className="text-muted-foreground">No peg stability data available</p>
+        </div>
+      </div>
+    )
+  }
+  
+  const data = propData
   
   const formatDeviation = (deviation: number) => {
     return `${deviation >= 0 ? '+' : ''}${deviation.toFixed(3)}%`
@@ -148,6 +190,23 @@ export function PegStabilitySection({ ticker, data: propData }: PegStabilitySect
   }
   
   const currentPrice = data.price_history[data.price_history.length - 1]?.price || 1.0
+  
+  // Get depeg periods for reference areas
+  const getDepegPeriods = (): { start: string; end: string }[] => {
+    const periods: { start: string; end: string }[] = []
+    
+    // Use the actual depeg events from the data
+    data.depeg_events.forEach(event => {
+      periods.push({
+        start: event.start_date,
+        end: event.end_date || event.start_date
+      })
+    })
+    
+    return periods
+  }
+  
+  const depegPeriods = getDepegPeriods()
   
   return (
     <div className="space-y-6">
@@ -185,28 +244,43 @@ export function PegStabilitySection({ ticker, data: propData }: PegStabilitySect
         <CardContent>
           <div className="h-80 w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={data.price_history}>
-                <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
+              <LineChart
+                data={data.price_history}
+                margin={{ top: 20, right: 30, left: 20, bottom: 70 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" />
                 <XAxis 
-                  dataKey="date"
+                  dataKey="date" 
                   tick={{ fontSize: 12 }}
-                  tickFormatter={(value) => {
-                    const date = new Date(value)
-                    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-                  }}
-                  interval="preserveStartEnd"
+                  angle={-45}
+                  textAnchor="end"
+                  height={60}
                 />
                 <YAxis 
                   domain={['dataMin - 0.01', 'dataMax + 0.01']}
                   tick={{ fontSize: 12 }}
-                  tickFormatter={(value) => `$${value.toFixed(3)}`}
+                  tickFormatter={(value) => `$${value.toFixed(4)}`}
                 />
                 <Tooltip content={<CustomTooltip />} />
                 
-                {/* Reference line at $1.00 */}
-                <ReferenceLine y={1.0} stroke="#10b981" strokeDasharray="2 2" />
+                {/* $1.00 reference line */}
+                <ReferenceLine y={1.0} stroke="#666" strokeDasharray="2 2" />
                 
-                {/* Price line */}
+                {/* Depeg period reference areas */}
+                {depegPeriods.map((period, index) => (
+                  <ReferenceArea
+                    key={index}
+                    x1={period.start}
+                    x2={period.end}
+                    fill="#dc2626"
+                    fillOpacity={0.3}
+                    stroke="#dc2626"
+                    strokeOpacity={0.8}
+                    strokeWidth={2}
+                  />
+                ))}
+                
+                {/* Price line - normal periods */}
                 <Line
                   type="monotone"
                   dataKey="price"
@@ -214,6 +288,22 @@ export function PegStabilitySection({ ticker, data: propData }: PegStabilitySect
                   strokeWidth={2}
                   dot={false}
                   activeDot={{ r: 4, fill: '#3b82f6' }}
+                />
+                
+                {/* Brush component for zoom functionality */}
+                <Brush 
+                  dataKey="date"
+                  height={40}
+                  stroke="hsl(var(--border))"
+                  fill="hsl(var(--muted))"
+                  startIndex={Math.max(0, data.price_history.length - 90)} // Show last 90 days by default
+                  endIndex={data.price_history.length - 1}
+                  tickFormatter={(value) => {
+                    const date = new Date(value)
+                    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+                  }}
+                  travellerWidth={8}
+                  gap={2}
                 />
               </LineChart>
             </ResponsiveContainer>

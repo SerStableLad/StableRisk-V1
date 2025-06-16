@@ -3,29 +3,41 @@ import { coinMarketCapService } from './coinmarketcap'
 import { auditDiscoveryService } from './audit-discovery'
 import { transparencyService } from './transparency'
 import { geckoTerminalService } from './geckoterminal'
-import { oracleAnalysisService } from './oracle-analysis'
-import { StablecoinAssessment, StablecoinInfo, PricePoint, RiskFactors, StablecoinTier1Data, StablecoinTier2Data, StablecoinTier3Data, TieredStablecoinAssessment } from '@/lib/types'
+// import { oracleAnalysisService } from './oracle-analysis' // Disabled oracle functionality
+import { StablecoinAssessment, StablecoinInfo, PricePoint, RiskFactors, StablecoinTier1Data, StablecoinTier2Data, StablecoinTier3Data, TieredStablecoinAssessment, AuditInfo } from '@/lib/types'
 import { cacheService } from './cache-service'
 import { metricsService } from './metrics-service'
+import { 
+  isKnownStablecoin, 
+  addNewStablecoinToMapping, 
+  updateMappingWithDiscoveredData,
+  generateMappingEntryString,
+  getKnownTransparencyData,
+  getKnownAuditFolderUrl
+} from './stablecoin-mapping-table'
+import { ApiClient } from './api-client'
+import { config } from '@/lib/config'
+import { AuditDiscoveryService } from './audit-discovery'
 
 export class StablecoinDataService {
-  
+  private auditDiscoveryService = new AuditDiscoveryService()
+
   /**
    * Main method to get comprehensive stablecoin assessment
    */
   async getStablecoinAssessment(ticker: string): Promise<StablecoinAssessment | null> {
     const startTime = Date.now()
     try {
-      // Check cache first
-      const cacheKey = `assessment:${ticker.toLowerCase()}`
-      const cachedData = cacheService.get<StablecoinAssessment>(cacheKey)
-      if (cachedData) {
-        metricsService.recordApiCall(`getStablecoinAssessment:${ticker}:cached`)
-        return cachedData
-      }
+      // Check cache first (temporarily disabled)
+      // const cacheKey = `assessment:${ticker.toLowerCase()}`
+      // const cachedData = cacheService.get<StablecoinAssessment>(cacheKey)
+      // if (cachedData) {
+      //   metricsService.recordApiCall(`getStablecoinAssessment:${ticker}:cached`)
+      //   return cachedData
+      // }
       
-      // No cache, record API call
-      metricsService.recordApiCall(`getStablecoinAssessment:${ticker}`)
+      // No cache, record API call (temporarily disabled)
+      // metricsService.recordApiCall(`getStablecoinAssessment:${ticker}`)
       
       // Step 1: Search for stablecoin
       const coinId = await this.searchStablecoin(ticker)
@@ -39,25 +51,132 @@ export class StablecoinDataService {
         return null
       }
 
+      // Step 2.5: Auto-add to mapping table if not known
+      if (!isKnownStablecoin(ticker)) {
+        console.log(`🆕 Auto-discovering new stablecoin: ${ticker} (${info.name})`)
+        
+        // Add to mapping table with basic info
+        const newEntry = addNewStablecoinToMapping(
+          ticker,
+          info.name,
+          coinId,
+          undefined, // marketCapRank will be determined later
+          {
+            homepage: Array.isArray(info.official_links?.homepage) 
+              ? info.official_links.homepage[0] 
+              : info.official_links?.homepage,
+            market_cap: info.market_cap,
+            genesis_date: info.genesis_date
+          }
+        )
+
+        // Log the mapping entry for manual review
+        console.log(`📋 Generated mapping entry for manual review:`)
+        console.log(generateMappingEntryString(newEntry))
+      }
+
       // Step 3: Get price history for stability analysis
       const priceHistory = await this.getPriceHistory(coinId)
 
-      // Step 4: Get comprehensive data in parallel
-      const [audits, transparency, riskFactors] = await Promise.all([
-        auditDiscoveryService.discoverAudits(
-          ticker, 
-          info.name, 
-          info.official_links?.github_repos, 
-          info.official_links?.homepage
-        ),
-        transparencyService.getTransparencyData(ticker, info.name, info.official_links?.homepage),
-        this.calculateRiskFactors(info, priceHistory, coinId, ticker)
-      ])
+      // Step 4: Get transparency data and update mapping if new data is discovered
+      console.log('Getting transparency data...')
+      
+      let transparency: any = {
+        dashboard_url: null,
+        attestation_provider: null,
+        update_frequency: null,
+        has_proof_of_reserves: false,
+        verification_status: 'unknown'
+      }
 
-      // Step 5: Calculate weighted risk score (1-100)
+      try {
+        // For known stablecoins, use mapping table data directly to avoid expensive API calls
+        if (isKnownStablecoin(ticker)) {
+          const knownTransparency = getKnownTransparencyData(ticker)
+          if (knownTransparency) {
+            transparency = knownTransparency
+            console.log(`✅ Using mapping table transparency data for ${ticker}`)
+          } else {
+            console.log(`📋 ${ticker} is known but has no transparency data in mapping table`)
+          }
+        } else {
+          // For unknown stablecoins, try discovery (but with timeout to avoid hanging)
+          console.log(`🔍 ${ticker} not in mapping table, attempting discovery...`)
+          try {
+            const transparencyData = await Promise.race([
+              transparencyService.getTransparencyData(ticker, info.name, 
+                Array.isArray(info.official_links?.homepage) 
+                  ? info.official_links.homepage 
+                  : info.official_links?.homepage ? [info.official_links.homepage] : undefined
+              ),
+              new Promise((_, reject) => setTimeout(() => reject(new Error('Transparency discovery timeout')), 5000))
+            ]) as any
+            
+            if (transparencyData) {
+              transparency = transparencyData
+              console.log('✅ Transparency data discovered successfully')
+              
+              // Update mapping table with discovered data
+              if (transparencyData.dashboard_url && transparencyData.dashboard_url !== '') {
+                console.log(`🔄 Updating mapping with discovered transparency data for ${ticker}`)
+                updateMappingWithDiscoveredData(ticker, transparencyData)
+              }
+            }
+          } catch (discoveryError) {
+            console.warn(`⚠️ Transparency discovery failed for ${ticker}:`, discoveryError)
+          }
+        }
+      } catch (error) {
+        console.warn(`Failed to get transparency data for ${ticker}:`, error)
+      }
+
+      // Step 5: Get audit data
+      console.log('Getting audit data...')
+      let audits: any[] = []
+      
+      // Use audit discovery service for all stablecoins
+      const auditFolderUrl = getKnownAuditFolderUrl(ticker)
+      if (auditFolderUrl) {
+        console.log(`🔍 Discovering audits for ${ticker} from: ${auditFolderUrl}`)
+        const discoveredAudits = await this.auditDiscoveryService.discoverAudits(ticker, info?.name, [], [auditFolderUrl])
+        audits = discoveredAudits || [] // Ensure we always have an array
+        console.log(`📋 Found ${audits.length} audits for ${ticker}`)
+      } else {
+        console.log(`📋 No audit folder URL found for ${ticker}`)
+      }
+      
+      // Calculate basic risk factors based on available data
+      const basicPegAnalysis = this.analyzePegStability(priceHistory)
+      const auditScore = await this.calculateAuditStatusWithData(info, audits)
+      
+      // Calculate actual transparency score using the transparency service
+      let transparencyScore = 0
+      try {
+        transparencyScore = transparencyService.calculateTransparencyScore(transparency)
+        console.log(`✅ Calculated transparency score for ${ticker}: ${transparencyScore}`)
+      } catch (error) {
+        console.warn(`⚠️ Failed to calculate transparency score for ${ticker}:`, error)
+        transparencyScore = 50 // Fallback to default middle score
+      }
+      
+      const riskFactors: any = {
+        peg_stability: { 
+          score: basicPegAnalysis.isCurrentlyDepegged ? 20 : 80, 
+          details: { avgDeviation: basicPegAnalysis.avgDeviation } 
+        },
+        transparency: { score: transparencyScore, details: {} },
+        liquidity: { 
+          score: info.market_cap > 1_000_000_000 ? 80 : 60, 
+          details: { market_cap: info.market_cap } 
+        },
+        oracle_setup: { score: 70, details: {} }, // Default score
+        audit_status: auditScore
+      }
+
+      // Step 6: Calculate weighted risk score (1-100)
       const riskScore = this.calculateOverallRiskScore(riskFactors)
 
-      // Step 6: Build comprehensive assessment
+      // Step 7: Build comprehensive assessment
       const pegAnalysis = this.analyzePegStability(priceHistory)
       const dataSources = ['CoinGecko']
       
@@ -92,13 +211,13 @@ export class StablecoinDataService {
       }
       
       // Cache for 6 hours (equivalent to Tier 3)
-      cacheService.set(cacheKey, assessment, 6 * 60 * 60 * 1000)
+      // cacheService.set(cacheKey, assessment, 6 * 60 * 60 * 1000)
       
-      metricsService.recordApiDuration(`getStablecoinAssessment:${ticker}`, Date.now() - startTime)
+      // metricsService.recordApiDuration(`getStablecoinAssessment:${ticker}`, Date.now() - startTime)
       return assessment
     } catch (error) {
       console.error('Error getting stablecoin assessment:', error)
-      metricsService.recordApiError(`getStablecoinAssessment:${ticker}`, error)
+      // metricsService.recordApiError(`getStablecoinAssessment:${ticker}`, error)
       return null
     }
   }
@@ -114,72 +233,32 @@ export class StablecoinDataService {
     }
 
     try {
-      // Check cache for complete assessment first
-      const completeAssessment = cacheService.getCompleteAssessment(ticker)
-      if (completeAssessment && completeAssessment.complete) {
-        metricsService.recordApiCall(`getStablecoinAssessmentTiered:${ticker}:cached`)
-        return completeAssessment
-      }
-      
-      metricsService.recordApiCall(`getStablecoinAssessmentTiered:${ticker}`)
-
       // TIER 1: Fast metadata and basic status (<500ms)
-      const tier1StartTime = Date.now()
-      // Check cache for tier 1 data
-      let tier1Data = cacheService.getTier1Data(ticker)
-      
-      if (!tier1Data) {
-        // Not in cache, fetch fresh data
-        tier1Data = await this.getTier1Data(ticker)
-      }
+      const tier1Data = await this.getTier1Data(ticker)
       
       if (!tier1Data) {
         assessment.complete = true
-        metricsService.recordApiDuration(`getStablecoinAssessmentTiered:${ticker}`, Date.now() - startTime)
         return assessment // Early return if stablecoin not found
       }
       
       assessment.tier1 = tier1Data
-      metricsService.recordTierDuration(ticker, 1, Date.now() - tier1StartTime)
       yield { ...assessment }
 
       // TIER 2: Core analysis (<2s)
-      const tier2StartTime = Date.now()
-      // Check cache for tier 2 data
-      let tier2Data = cacheService.getTier2Data(ticker)
-      
-      if (!tier2Data) {
-        // Not in cache, fetch fresh data
-        tier2Data = await this.getTier2Data(ticker, tier1Data)
-      }
+      const tier2Data = await this.getTier2Data(ticker, tier1Data)
       
       assessment.tier2 = tier2Data
-      metricsService.recordTierDuration(ticker, 2, Date.now() - tier2StartTime)
       yield { ...assessment }
 
       // TIER 3: Comprehensive analysis (<5s)
-      const tier3StartTime = Date.now()
-      // Check cache for tier 3 data
-      let tier3Data = cacheService.getTier3Data(ticker)
-      
-      if (!tier3Data) {
-        // Not in cache, fetch fresh data
-        tier3Data = await this.getTier3Data(ticker, tier1Data, tier2Data)
-      }
+      const tier3Data = await this.getTier3Data(ticker, tier1Data, tier2Data)
       
       assessment.tier3 = tier3Data
       assessment.complete = true
       
-      // Store the complete assessment in cache
-      cacheService.setTieredData(ticker, assessment)
-      
-      metricsService.recordTierDuration(ticker, 3, Date.now() - tier3StartTime)
-      metricsService.recordApiDuration(`getStablecoinAssessmentTiered:${ticker}`, Date.now() - startTime)
-      
       return assessment
     } catch (error) {
       console.error('Error in tiered stablecoin assessment:', error)
-      metricsService.recordApiError(`getStablecoinAssessmentTiered:${ticker}`, error)
       assessment.complete = true
       return assessment
     }
@@ -205,6 +284,30 @@ export class StablecoinDataService {
       if (!info) {
         console.timeEnd('Tier1-Performance')
         return null
+      }
+
+      // Step 2.5: Auto-add to mapping table if not known (Tier 1 discovery)
+      if (!isKnownStablecoin(ticker)) {
+        console.log(`🆕 [Tier 1] Auto-discovering new stablecoin: ${ticker} (${info.name})`)
+        
+        // Add to mapping table with basic info
+        const newEntry = addNewStablecoinToMapping(
+          ticker,
+          info.name,
+          coinId,
+          undefined, // marketCapRank will be determined later
+          {
+            homepage: Array.isArray(info.official_links?.homepage) 
+              ? info.official_links.homepage[0] 
+              : info.official_links?.homepage,
+            market_cap: info.market_cap,
+            genesis_date: info.genesis_date
+          }
+        )
+
+        // Log the mapping entry for manual review
+        console.log(`📋 [Tier 1] Generated mapping entry for manual review:`)
+        console.log(generateMappingEntryString(newEntry))
       }
 
       // Step 3: Create basic peg status
@@ -338,9 +441,8 @@ export class StablecoinDataService {
         full_peg_stability: { price_history: [], average_deviation: 0, depeg_incidents: 0, depeg_recovery_speed: 0, is_depegged: true },
         full_transparency: { has_proof_of_reserves: false, update_frequency: 'unknown', verification_status: 'unverified' },
         liquidity: { total_liquidity: 0, dex_distribution: [], concentration_risk: 'high', chain_distribution: [] },
-        oracle: { providers: [], is_multi_oracle: false, decentralization_score: 0 },
         audits: [],
-        complete_risk_scores: { overall: 0, peg_stability: 0, transparency: 0, liquidity: 0, oracle: 0, audit: 0 },
+        complete_risk_scores: { overall: 0, peg_stability: 0, transparency: 0, liquidity: 0, audit: 0 },
         data_sources: []
       };
     }
@@ -349,14 +451,12 @@ export class StablecoinDataService {
       priceHistory, 
       audits, 
       transparency,
-      liquidity,
-      oracleAnalysis
+      liquidity
     ] = await Promise.all([
       this.getPriceHistory(fullInfo.id),
       auditDiscoveryService.discoverAudits(ticker, fullInfo.name, fullInfo.official_links?.github_repos, fullInfo.official_links?.homepage),
       transparencyService.getTransparencyData(ticker, fullInfo.name, fullInfo.official_links?.homepage),
-      this.getEnhancedLiquidityData(fullInfo, ticker),
-      oracleAnalysisService.getOracleAnalysis(fullInfo)
+      this.getEnhancedLiquidityData(fullInfo, ticker)
     ]);
     
     const fullPegAnalysis = this.analyzePegStability(priceHistory);
@@ -374,18 +474,12 @@ export class StablecoinDataService {
       },
       full_transparency: transparency,
       liquidity,
-      oracle: {
-        providers: oracleAnalysis.providers.map(p => p.name),
-        is_multi_oracle: oracleAnalysis.is_multi_oracle,
-        decentralization_score: oracleAnalysis.decentralization_score,
-      },
       audits,
       complete_risk_scores: {
         overall: this.calculateOverallRiskScore(riskFactors),
         peg_stability: riskFactors.peg_stability.score,
         transparency: riskFactors.transparency.score,
         liquidity: riskFactors.liquidity.score,
-        oracle: riskFactors.oracle_setup.score,
         audit: riskFactors.audit_status.score,
       },
       data_sources: ['CoinGecko', 'GitHub', 'Transparency APIs']
@@ -442,10 +536,10 @@ export class StablecoinDataService {
     decentralization_score: number
   }> {
     try {
-      const oracleAnalysis = await oracleAnalysisService.getBasicOracleAnalysis(info)
+      // const oracleAnalysis = await oracleAnalysisService.getBasicOracleAnalysis(info)
       return {
-        is_multi_oracle: oracleAnalysis.is_multi_oracle,
-        decentralization_score: oracleAnalysis.decentralization_score
+        is_multi_oracle: false,
+        decentralization_score: 0
       }
     } catch (error) {
       console.warn(`Failed to get basic oracle analysis for ${info.symbol}:`, error)
@@ -520,13 +614,11 @@ export class StablecoinDataService {
       pegStability,
       transparency,
       liquidity,
-      oracleSetup,
       auditStatus
     ] = await Promise.all([
       this.calculatePegStability(priceHistory),
       this.calculateTransparencyScore(ticker || info.symbol, info),
       this.calculateLiquidity(info, coinId),
-      this.calculateOracleSetup(info),
       this.calculateAuditStatus(info)
     ])
 
@@ -534,7 +626,6 @@ export class StablecoinDataService {
       peg_stability: pegStability,
       transparency: transparency,
       liquidity: liquidity,
-      oracle_setup: oracleSetup,
       audit_status: auditStatus,
     }
   }
@@ -686,17 +777,17 @@ export class StablecoinDataService {
     decentralization_score: number
   }> {
     try {
-      const oracleAnalysis = await oracleAnalysisService.getOracleAnalysis(info)
+      // const oracleAnalysis = await oracleAnalysisService.getOracleAnalysis(info)
       
       // Convert to expected format (just provider names)
-      const providers = oracleAnalysis.providers.map(provider => provider.name)
+      const providers: string[] = []
 
-      console.log(`✅ Oracle analysis complete for ${info.symbol}: ${oracleAnalysis.oracle_count} providers`)
+      console.log(`✅ Oracle analysis complete for ${info.symbol}: ${providers.length} providers`)
 
       return {
         providers,
-        is_multi_oracle: oracleAnalysis.is_multi_oracle,
-        decentralization_score: oracleAnalysis.decentralization_score,
+        is_multi_oracle: false,
+        decentralization_score: 0,
       }
     } catch (error) {
       console.warn(`Failed to get oracle analysis for ${info.symbol}:`, error)
@@ -805,21 +896,105 @@ export class StablecoinDataService {
     score: number,
     details: any // To-do: Define a proper type for oracle details
   }> {
-    const oracleData = await oracleAnalysisService.getOracleAnalysis(info);
+    const oracleData = { decentralization_score: 0 }; // Disabled oracle functionality
     
-    const score = oracleData.decentralization_score || 0;
+    const score = 0;
     
     console.log(`✅ Enhanced oracle scoring for ${info.symbol}: ${score}/100`);
     
     return {
       score,
-      details: oracleData
+      details: {}
     };
   }
 
   /**
+   * Enhanced Audit Status Analysis with actual audit data
+   * Takes into account real audit information when available
+   */
+  private async calculateAuditStatusWithData(info: StablecoinInfo | null, audits: AuditInfo[]): Promise<{
+    score: number
+    details: Record<string, any>
+  }> {
+    const details: Record<string, any> = {}
+
+    // If we have actual audit data, calculate score based on that
+    if (audits && audits.length > 0) {
+      let score = 50 // Base score
+
+      // Recent audits bonus (up to +30 points)
+      const recentAudits = audits.filter(audit => {
+        const auditDate = new Date(audit.date)
+        const sixMonthsAgo = new Date()
+        sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6)
+        return auditDate >= sixMonthsAgo
+      })
+
+      if (recentAudits.length >= 3) {
+        score += 30 // Excellent: 3+ recent audits
+      } else if (recentAudits.length >= 2) {
+        score += 25 // Very good: 2 recent audits
+      } else if (recentAudits.length >= 1) {
+        score += 20 // Good: 1 recent audit
+      }
+
+      // Top-tier firm bonus (up to +15 points)
+      const topTierAudits = audits.filter(audit => audit.is_top_tier)
+      if (topTierAudits.length >= 2) {
+        score += 15 // Multiple top-tier audits
+      } else if (topTierAudits.length >= 1) {
+        score += 10 // At least one top-tier audit
+      }
+
+      // Critical/high issues penalty (up to -20 points)
+      const totalCriticalHighIssues = audits.reduce((sum, audit) => sum + (audit.critical_high_issues || 0), 0)
+      if (totalCriticalHighIssues === 0) {
+        score += 10 // Bonus for no critical/high issues
+      } else if (totalCriticalHighIssues <= 2) {
+        score -= 5 // Minor penalty for few issues
+      } else {
+        score -= Math.min(20, totalCriticalHighIssues * 3) // Escalating penalty
+      }
+
+      // Resolution status bonus (up to +5 points)
+      const resolvedAudits = audits.filter(audit => audit.resolution_status === 'resolved')
+      if (resolvedAudits.length === audits.length) {
+        score += 5 // All issues resolved
+      }
+
+      return {
+        score: Math.min(100, Math.max(0, Math.round(score))),
+        details: {
+          total_audits: audits.length,
+          recent_audits: recentAudits.length,
+          top_tier_audits: topTierAudits.length,
+          critical_high_issues: totalCriticalHighIssues,
+          resolved_audits: resolvedAudits.length,
+          has_audit_data: true
+        }
+      }
+    }
+
+    // Fallback to legacy scoring for known coins without audit data
+    // If info is null (API failed), return a default score
+    if (!info) {
+      return {
+        score: 30, // Default score when API fails and no audit data
+        details: {
+          auditor: 'Unknown - API unavailable',
+          is_well_audited: false,
+          has_audit_data: false,
+          api_failed: true
+        }
+      }
+    }
+
+    return this.calculateAuditStatus(info)
+  }
+
+  /**
    * Audit Status Analysis (10% weight)
-   * Based on known audit information
+   * Based on known audit information (legacy method)
    */
   private async calculateAuditStatus(info: StablecoinInfo): Promise<{
     score: number
@@ -844,6 +1019,7 @@ export class StablecoinDataService {
         details: {
           auditor: auditInfo.auditor,
           is_well_audited: true,
+          has_audit_data: false
         }
       }
     }
@@ -854,6 +1030,7 @@ export class StablecoinDataService {
       details: {
         auditor: 'Unknown',
         is_well_audited: false,
+        has_audit_data: false
       }
     }
   }
@@ -863,10 +1040,9 @@ export class StablecoinDataService {
    */
   private calculateOverallRiskScore(riskFactors: RiskFactors): number {
     const weights = {
-      peg_stability: 0.40,    // 40%
-      transparency: 0.20,     // 20%
+      peg_stability: 0.50,    // 50% (increased from 40%)
+      transparency: 0.25,     // 25% (increased from 20%)
       liquidity: 0.15,        // 15%
-      oracle_setup: 0.15,     // 15%
       audit_status: 0.10,     // 10%
     }
 
@@ -874,7 +1050,6 @@ export class StablecoinDataService {
       riskFactors.peg_stability.score * weights.peg_stability +
       riskFactors.transparency.score * weights.transparency +
       riskFactors.liquidity.score * weights.liquidity +
-      riskFactors.oracle_setup.score * weights.oracle_setup +
       riskFactors.audit_status.score * weights.audit_status
 
     return Math.round(weightedScore)

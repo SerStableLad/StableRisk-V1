@@ -21,6 +21,7 @@ export interface StablecoinMappingEntry {
   lastVerified: string // ISO date when data was last manually verified
   marketCapRank?: number // Approximate ranking to help prioritize updates
   notes?: string // Any important context about the data
+  genesis_date?: string // ISO date string for when the stablecoin was first launched/minted
 }
 
 /**
@@ -47,23 +48,25 @@ export const STABLECOIN_TRANSPARENCY_MAPPING: Record<string, StablecoinMappingEn
     audit_folder_url: '',
     lastVerified: '2025-01-06',
     marketCapRank: 2,
-    notes: 'Centre Consortium provides monthly attestations via Grant Thornton'
+    notes: 'Centre Consortium provides monthly attestations via Grant Thornton',
+    genesis_date: '2018-09-26'
   },
 
   'USDT': {
     symbol: 'USDT',
     name: 'Tether',
     transparency: {
-      dashboard_url: 'https://tether.to/transparency/',
+      dashboard_url: 'https://tether.to/en/transparency/?tab=reports',
       attestation_provider: 'BDO Italia',
       update_frequency: 'monthly',
       has_proof_of_reserves: true,
       verification_status: 'verified'
     },
-    audit_folder_url: '',
+    audit_folder_url: 'https://github.com/Everdawn-Labs/usdt0-audit-reports',
     lastVerified: '2025-01-06',
     marketCapRank: 1,
-    notes: 'BDO Italia provides quarterly attestations, transparency page updated monthly'
+    notes: 'BDO Italia provides quarterly attestations, transparency page updated monthly',
+    genesis_date: '2014-10-06'
   },
 
 
@@ -77,10 +80,11 @@ export const STABLECOIN_TRANSPARENCY_MAPPING: Record<string, StablecoinMappingEn
       has_proof_of_reserves: true,
       verification_status: 'verified'
     },
-    audit_folder_url: 'https://docs.frax.finance/smart-contracts/audits',
+    audit_folder_url: 'https://github.com/FraxFinance/frax-solidity/tree/master/src/audits',
     lastVerified: '2025-01-06',
     marketCapRank: 5,
-    notes: 'Algorithmic + collateral backing, on-chain transparency'
+    notes: 'Algorithmic + collateral backing, on-chain transparency',
+    genesis_date: '2020-12-21'
   },
 
   'LUSD': {
@@ -96,7 +100,8 @@ export const STABLECOIN_TRANSPARENCY_MAPPING: Record<string, StablecoinMappingEn
     audit_folder_url: 'https://docs.liquity.org/v2-documentation/technical-docs-and-audits',
     lastVerified: '2025-01-06',
     marketCapRank: 9,
-    notes: 'Fully on-chain, ETH-only collateral, immutable protocol'
+    notes: 'Fully on-chain, ETH-only collateral, immutable protocol',
+    genesis_date: '2021-04-05'
   },
 
   'FDUSD': {
@@ -159,7 +164,8 @@ export const STABLECOIN_TRANSPARENCY_MAPPING: Record<string, StablecoinMappingEn
     audit_folder_url: 'https://docs.m0.org/portal/technical/audits',
     lastVerified: '2025-01-25',
     marketCapRank: 50, // approximate based on current market cap
-    notes: 'M0 protocol stablecoin with institutional focus, comprehensive audit documentation'
+    notes: 'M0 protocol stablecoin with institutional focus, comprehensive audit documentation',
+    genesis_date: '2024-07-15'
   },
 
   'USDY': {
@@ -237,6 +243,22 @@ export function isKnownStablecoin(symbol: string): boolean {
 }
 
 /**
+ * Get full mapping entry for a known stablecoin
+ */
+export function getKnownStablecoinEntry(symbol: string): StablecoinMappingEntry | null {
+  const entry = STABLECOIN_TRANSPARENCY_MAPPING[symbol.toUpperCase()]
+  return entry || null
+}
+
+/**
+ * Get genesis date for a known stablecoin
+ */
+export function getKnownGenesisDate(symbol: string): string | null {
+  const entry = STABLECOIN_TRANSPARENCY_MAPPING[symbol.toUpperCase()]
+  return entry?.genesis_date || null
+}
+
+/**
  * Get mapping metadata for maintenance purposes
  */
 export function getMappingMetadata(symbol: string): Omit<StablecoinMappingEntry, 'transparency'> | null {
@@ -291,4 +313,136 @@ export function getMappingStats() {
     dailyUpdates: entries.filter(e => e.transparency.update_frequency === 'daily').length,
     lastUpdated: Math.max(...entries.map(e => new Date(e.lastVerified).getTime()))
   }
+}
+
+/**
+ * Add a new stablecoin to the mapping table dynamically
+ * This function appends new entries to the in-memory mapping and optionally persists them
+ */
+export function addNewStablecoinToMapping(
+  symbol: string,
+  name: string,
+  coinGeckoId?: string,
+  marketCapRank?: number,
+  basicInfo?: {
+    homepage?: string
+    market_cap?: number
+    genesis_date?: string
+  }
+): StablecoinMappingEntry {
+  const newEntry: StablecoinMappingEntry = {
+    symbol: symbol.toUpperCase(),
+    name: name,
+    transparency: {
+      dashboard_url: '',
+      attestation_provider: '',
+      update_frequency: 'unknown',
+      has_proof_of_reserves: false,
+      verification_status: 'unknown'
+    },
+    audit_folder_url: '',
+    lastVerified: new Date().toISOString().split('T')[0], // Today's date in YYYY-MM-DD format
+    marketCapRank: marketCapRank || 999,
+    notes: `Auto-discovered stablecoin - requires manual verification and data curation`
+  }
+
+  // Add to the in-memory mapping
+  STABLECOIN_TRANSPARENCY_MAPPING[symbol.toUpperCase()] = newEntry
+
+  console.log(`✅ Added new stablecoin to mapping table: ${symbol} (${name})`)
+  
+  // Log the addition for manual review
+  console.log(`📝 New mapping entry created:`, {
+    symbol: newEntry.symbol,
+    name: newEntry.name,
+    marketCapRank: newEntry.marketCapRank,
+    needsManualReview: true
+  })
+
+  return newEntry
+}
+
+/**
+ * Update an existing mapping entry with discovered transparency data
+ */
+export function updateMappingWithDiscoveredData(
+  symbol: string,
+  discoveredData: Partial<TransparencyData>,
+  auditUrl?: string
+): boolean {
+  const entry = STABLECOIN_TRANSPARENCY_MAPPING[symbol.toUpperCase()]
+  if (!entry) {
+    return false
+  }
+
+  // Update transparency data with discovered information
+  if (discoveredData.dashboard_url) {
+    entry.transparency.dashboard_url = discoveredData.dashboard_url
+  }
+  if (discoveredData.attestation_provider) {
+    entry.transparency.attestation_provider = discoveredData.attestation_provider
+  }
+  if (discoveredData.update_frequency) {
+    entry.transparency.update_frequency = discoveredData.update_frequency
+  }
+  if (discoveredData.has_proof_of_reserves !== undefined) {
+    entry.transparency.has_proof_of_reserves = discoveredData.has_proof_of_reserves
+  }
+  if (discoveredData.verification_status) {
+    entry.transparency.verification_status = discoveredData.verification_status
+  }
+
+  // Update audit URL if provided
+  if (auditUrl) {
+    entry.audit_folder_url = auditUrl
+  }
+
+  // Update last verified date
+  entry.lastVerified = new Date().toISOString().split('T')[0]
+  
+  // Update notes to indicate auto-discovery
+  entry.notes = `Auto-updated with discovered data on ${entry.lastVerified} - requires manual verification`
+
+  console.log(`✅ Updated mapping entry for ${symbol} with discovered data`)
+  
+  return true
+}
+
+/**
+ * Generate a mapping table entry string for manual addition to the file
+ * This helps with maintaining the mapping table file
+ */
+export function generateMappingEntryString(entry: StablecoinMappingEntry): string {
+  return `
+  '${entry.symbol}': {
+    symbol: '${entry.symbol}',
+    name: '${entry.name}',
+    transparency: {
+      dashboard_url: '${entry.transparency.dashboard_url}',
+      attestation_provider: '${entry.transparency.attestation_provider}',
+      update_frequency: '${entry.transparency.update_frequency}',
+      has_proof_of_reserves: ${entry.transparency.has_proof_of_reserves},
+      verification_status: '${entry.transparency.verification_status}'
+    },
+    audit_folder_url: '${entry.audit_folder_url}',
+    lastVerified: '${entry.lastVerified}',
+    marketCapRank: ${entry.marketCapRank},
+    notes: '${entry.notes}'
+  },`
+}
+
+/**
+ * Get all auto-discovered entries that need manual review
+ */
+export function getAutoDiscoveredEntries(): StablecoinMappingEntry[] {
+  return Object.values(STABLECOIN_TRANSPARENCY_MAPPING)
+    .filter(entry => entry.notes?.includes('Auto-discovered') || entry.notes?.includes('Auto-updated'))
+}
+
+/**
+ * Check if a stablecoin was auto-discovered and needs manual review
+ */
+export function needsManualReview(symbol: string): boolean {
+  const entry = STABLECOIN_TRANSPARENCY_MAPPING[symbol.toUpperCase()]
+  return Boolean(entry?.notes?.includes('Auto-discovered') || entry?.notes?.includes('Auto-updated'))
 } 

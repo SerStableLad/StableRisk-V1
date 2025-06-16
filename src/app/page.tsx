@@ -33,9 +33,8 @@ export default function HomePage() {
           <h2 className="text-xl md:text-2xl font-medium text-foreground">
             Comprehensive Risk Assessment for USD-Pegged Stablecoins
           </h2>
-          <p className="text-base md:text-lg text-muted-foreground">
-            Analyze peg stability, transparency, liquidity, oracle setup, and audit status 
-            to make informed decisions about stablecoin risk.
+          <p className="mx-auto max-w-[700px] text-gray-500 md:text-xl dark:text-gray-400">
+            Analyze peg stability, transparency, liquidity, and audit status
           </p>
         </div>
 

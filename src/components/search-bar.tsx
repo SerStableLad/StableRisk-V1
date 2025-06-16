@@ -15,7 +15,7 @@ interface SearchBarProps {
 
 export function SearchBar({ 
   className, 
-  placeholder = "Enter stablecoin ticker (e.g., USDT, USDC, DAI)",
+  placeholder = "Enter stablecoin ticker (e.g., USDT, USDC, USDS, USDO, USDN, USDY)",
   size = "default"
 }: SearchBarProps) {
   const [ticker, setTicker] = useState("")

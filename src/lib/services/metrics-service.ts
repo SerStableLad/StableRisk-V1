@@ -4,9 +4,14 @@ export class MetricsService {
     console.log(`API Call: ${service}/${endpoint} took ${duration}ms`)
   }
   
-  async recordApiError(service: string, endpoint: string, error: any): Promise<void> {
+  async recordApiDuration(endpoint: string, duration: number): Promise<void> {
     // In development, just log to console
-    console.error(`API Error: ${service}/${endpoint}`, error)
+    console.log(`API Duration: ${endpoint} took ${duration}ms`)
+  }
+  
+  async recordApiError(service: string, error: any): Promise<void> {
+    // In development, just log to console
+    console.error(`API Error: ${service}`, error)
   }
   
   async recordCacheHit(key: string): Promise<void> {

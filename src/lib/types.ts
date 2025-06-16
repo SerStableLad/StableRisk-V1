@@ -25,7 +25,7 @@ export interface RiskScores {
   peg_stability: number
   transparency: number
   liquidity: number
-  oracle: number
+  // oracle: number // Disabled oracle functionality
   audit: number
 }
 
@@ -63,7 +63,7 @@ export interface StablecoinTier3Data {
   full_peg_stability: PegStabilityData
   full_transparency: TransparencyData
   liquidity: LiquidityData
-  oracle: OracleData
+  // oracle: OracleData // Disabled oracle functionality
   audits: AuditInfo[]
   complete_risk_scores: RiskScores
   data_sources: string[]
@@ -149,7 +149,7 @@ export interface StablecoinAssessment {
   peg_stability: PegStabilityData
   audits: AuditInfo[]
   transparency: TransparencyData
-  oracle: OracleData
+  // oracle: OracleData // Disabled oracle functionality
   liquidity: LiquidityData
   last_updated: string
   data_sources: string[]
@@ -183,10 +183,10 @@ export interface RiskFactors {
     score: number
     details: Record<string, any>
   }
-  oracle_setup: {
-    score: number
-    details: Record<string, any>
-  }
+  // oracle_setup: { // Disabled oracle functionality
+  //   score: number
+  //   details: Record<string, any>
+  // }
   audit_status: {
     score: number
     details: Record<string, any>
