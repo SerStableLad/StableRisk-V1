@@ -108,7 +108,7 @@ export interface TransparencyData {
   dashboard_url?: string
   attestation_provider?: string
   attestation_url?: string // Direct link to attestation reports (e.g., Dropbox folder)
-  update_frequency: 'daily' | 'weekly' | 'monthly' | 'unknown'
+  update_frequency: 'real-time' | 'daily' | 'weekly' | 'monthly' | 'none' | 'unknown'
   last_update_date?: string // ISO date string when update_frequency is unknown
   has_proof_of_reserves: boolean
   verification_status: 'verified' | 'unverified' | 'unknown'

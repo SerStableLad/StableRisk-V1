@@ -32,7 +32,7 @@ interface TransparencyData {
   has_proof_of_reserves: boolean
   proof_of_reserves_score: number
   attestation_providers: AttestationProvider[]
-  update_frequency: 'real_time' | 'daily' | 'weekly' | 'monthly' | 'quarterly' | 'unknown'
+  update_frequency: 'real-time' | 'daily' | 'weekly' | 'monthly' | 'none' | 'unknown'
   last_updated: string
   transparency_issues: string[]
   reserve_composition?: {
@@ -101,7 +101,7 @@ function generateMockData(ticker: string): TransparencyData {
           is_verified: true
         }
       ],
-      update_frequency: 'real_time',
+      update_frequency: 'real-time',
       is_verified_source: true,
       transparency_issues: []
     }
@@ -137,7 +137,7 @@ function generateMockData(ticker: string): TransparencyData {
 
 const getUpdateFrequencyBadge = (frequency: string) => {
   switch (frequency) {
-    case 'real_time':
+    case 'real-time':
       return <Badge variant="default" className="bg-green-100 text-green-800">Real-time</Badge>
     case 'daily':
       return <Badge variant="default" className="bg-green-100 text-green-800">Daily</Badge>
@@ -145,8 +145,8 @@ const getUpdateFrequencyBadge = (frequency: string) => {
       return <Badge variant="default" className="bg-yellow-100 text-yellow-800">Weekly</Badge>
     case 'monthly':
       return <Badge variant="default" className="bg-yellow-100 text-yellow-800">Monthly</Badge>
-    case 'quarterly':
-      return <Badge variant="destructive">Quarterly</Badge>
+    case 'none':
+      return <Badge variant="destructive">No Updates</Badge>
     default:
       return <Badge variant="outline">Unknown</Badge>
   }
