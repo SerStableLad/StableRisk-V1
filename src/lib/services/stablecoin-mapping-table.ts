@@ -190,7 +190,7 @@ export const STABLECOIN_TRANSPARENCY_MAPPING: Record<string, StablecoinMappingEn
     symbol: 'USD1',
     name: 'World Liberty Financial USD',
     transparency: {
-      dashboard_url: 'https://www.bitgo.com/usd1/',
+      dashboard_url: 'https://worldlibertyfinancial.com/',
       attestation_provider: 'None',
       update_frequency: 'none',
       has_proof_of_reserves: false,
@@ -212,7 +212,7 @@ export const STABLECOIN_TRANSPARENCY_MAPPING: Record<string, StablecoinMappingEn
       has_proof_of_reserves: true,
       verification_status: 'verified'
     },
-    audit_folder_url: 'https://docs.openeden.com/usdo/risks',
+    audit_folder_url: 'https://github.com/OpenEdenHQ/audit-reports',
     lastVerified: '2025-01-25',
     marketCapRank: 50,
     notes: 'Real-time transparency dashboard with Chainlink PoR feed. Backed by US Treasuries.'
@@ -228,7 +228,7 @@ export const STABLECOIN_TRANSPARENCY_MAPPING: Record<string, StablecoinMappingEn
       has_proof_of_reserves: true,
       verification_status: 'verified'
     },
-    audit_folder_url: 'https://www.paxos.com/pyusd-transparency',
+    audit_folder_url: 'https://github.com/paxosglobal/pyusd-contract/tree/master/audit-reports',
     lastVerified: '2025-01-25',
     marketCapRank: 15, // Major stablecoin by PayPal
     notes: 'Issued by regulated Paxos Trust Company. Monthly attestations by KPMG. Available on Ethereum and Solana.'
@@ -244,7 +244,7 @@ export const STABLECOIN_TRANSPARENCY_MAPPING: Record<string, StablecoinMappingEn
       has_proof_of_reserves: true,
       verification_status: 'verified'
     },
-    audit_folder_url: 'https://gitbook.usual.money/',
+    audit_folder_url: 'https://tech.usual.money/security-and-audits/audits',
     lastVerified: '2025-01-25',
     marketCapRank: 25, // ~$618M market cap
     notes: 'Real-time transparency via RWA.xyz. Backed by short-term US Treasury Bills. Managed by Hashnote.'
@@ -260,43 +260,12 @@ export const STABLECOIN_TRANSPARENCY_MAPPING: Record<string, StablecoinMappingEn
       has_proof_of_reserves: true,
       verification_status: 'verified'
     },
-    audit_folder_url: 'https://dedaub.com/audits/',
+    audit_folder_url: 'https://docs.elixir.xyz/audit',
     lastVerified: '2025-01-25',
     marketCapRank: 30, // ~$126M backing assets
     notes: 'Real-time transparency dashboard. Backed by USDT, Staked USDS, and institutional RWA (BlackRock BUIDL, Hamilton Lane SCOPE).'
-  },
-
-  'USDB': {
-    symbol: 'USDB',
-    name: 'USD Balance',
-    transparency: {
-      dashboard_url: '',
-      attestation_provider: 'Unknown',
-      update_frequency: 'unknown',
-      has_proof_of_reserves: false,
-      verification_status: 'unverified'
-    },
-    audit_folder_url: '',
-    lastVerified: '2025-01-25',
-    marketCapRank: 999,
-    notes: 'Manual verification needed - limited information available'
-  },
-
-  'SUSD': {
-    symbol: 'SUSD',
-    name: 'Synthetix USD',
-    transparency: {
-      dashboard_url: 'https://synthetix.io/',
-      attestation_provider: 'On-chain collateralization',
-      update_frequency: 'real-time',
-      has_proof_of_reserves: true,
-      verification_status: 'verified'
-    },
-    audit_folder_url: 'https://docs.synthetix.io/security/',
-    lastVerified: '2025-01-25',
-    marketCapRank: 40,
-    notes: 'Synthetic stablecoin backed by SNX collateral. Over-collateralized system with on-chain transparency.'
   }
+  
 }
 
 /**

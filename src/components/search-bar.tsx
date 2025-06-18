@@ -99,29 +99,29 @@ export function SearchBar({
           Popular: 
           <button
             type="button"
-            onClick={() => setTicker("USDT")}
+            onClick={() => setTicker("USD0")}
             className="ml-2 text-primary hover:underline"
             disabled={isLoading}
           >
-            USDT
+            USDO
           </button>
           <span className="mx-1">•</span>
           <button
             type="button"
-            onClick={() => setTicker("USDC")}
+            onClick={() => setTicker("USDS")}
             className="text-primary hover:underline"
             disabled={isLoading}
           >
-            USDC
+            USDS
           </button>
           <span className="mx-1">•</span>
           <button
             type="button"
-            onClick={() => setTicker("DAI")}
+            onClick={() => setTicker("PYUSD")}
             className="text-primary hover:underline"
             disabled={isLoading}
           >
-            DAI
+            PYUSD
           </button>
         </p>
       </div>

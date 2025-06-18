@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import Image from 'next/image'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
@@ -131,9 +132,11 @@ export function MainSummaryCard({
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-3">
             {!imageError ? (
-              <img
+              <Image
                 src={info.logo}
                 alt={`${info.name} logo`}
+                width={32}
+                height={32}
                 className="h-8 w-8 rounded-full"
                 onError={handleImageError}
               />

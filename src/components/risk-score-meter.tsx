@@ -2,7 +2,7 @@ import React from "react"
 import { cn } from "@/lib/utils"
 
 interface RiskScoreMeterProps {
-  score: number
+  score: number | null
   size?: "sm" | "md" | "lg"
   className?: string
   showScore?: boolean
@@ -14,15 +14,6 @@ export function RiskScoreMeter({
   className,
   showScore = true 
 }: RiskScoreMeterProps) {
-  // Determine risk level and color
-  const getRiskLevel = (score: number) => {
-    if (score <= 30) return { level: "High Risk", color: "text-red-500", bgColor: "stroke-red-500" }
-    if (score <= 60) return { level: "Medium Risk", color: "text-yellow-500", bgColor: "stroke-yellow-500" }
-    return { level: "Low Risk", color: "text-green-500", bgColor: "stroke-green-500" }
-  }
-
-  const riskInfo = getRiskLevel(score)
-  
   // Size configurations
   const sizeConfig = {
     sm: { radius: 35, strokeWidth: 6, textSize: "text-lg", labelSize: "text-xs" },
@@ -31,6 +22,61 @@ export function RiskScoreMeter({
   }
   
   const config = sizeConfig[size]
+
+  // Handle null scores
+  if (score === null) {
+    return (
+      <div className={cn("relative flex flex-col items-center", className)}>
+        <div className="relative">
+          <svg 
+            width={config.radius * 2 + config.strokeWidth * 2} 
+            height={config.radius * 2 + config.strokeWidth * 2}
+            className="transform -rotate-90"
+          >
+            {/* Background circle */}
+            <circle
+              cx={config.radius + config.strokeWidth}
+              cy={config.radius + config.strokeWidth}
+              r={config.radius}
+              stroke="currentColor"
+              strokeWidth={config.strokeWidth}
+              fill="transparent"
+              className="text-muted-foreground/20"
+            />
+          </svg>
+          
+          {/* "Data Not Found" display in center */}
+          <div className="absolute inset-0 flex flex-col items-center justify-center">
+            <span className={cn("font-bold text-muted-foreground", config.textSize)}>
+              N/A
+            </span>
+            <span className={cn("text-muted-foreground", config.labelSize)}>
+              No Data
+            </span>
+          </div>
+        </div>
+        
+        {/* Data not found label */}
+        <div className="mt-4 text-center">
+          <div className={cn("font-semibold text-muted-foreground", config.labelSize)}>
+            Data Not Found
+          </div>
+          <div className={cn("text-muted-foreground", config.labelSize === "text-xs" ? "text-xs" : "text-sm")}>
+            No Assessment Available
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // Determine risk level and color
+  const getRiskLevel = (score: number) => {
+    if (score <= 30) return { level: "High Risk", color: "text-red-500", bgColor: "stroke-red-500" }
+    if (score <= 60) return { level: "Medium Risk", color: "text-yellow-500", bgColor: "stroke-yellow-500" }
+    return { level: "Low Risk", color: "text-green-500", bgColor: "stroke-green-500" }
+  }
+
+  const riskInfo = getRiskLevel(score)
   const circumference = 2 * Math.PI * config.radius
   const strokeDasharray = circumference
   const strokeDashoffset = circumference - (score / 100) * circumference

@@ -648,4 +648,22 @@ export async function generateMetadata({
       description: `Get detailed risk analysis for ${upperTicker} stablecoin`,
     },
   }
-} 
+}
+
+// Add static generation for popular stablecoins
+export async function generateStaticParams() {
+  // REDUCED SCOPE: Only pre-generate the most critical stablecoins to avoid rate limits
+  // Build-time API calls are hitting rate limits with 7+ concurrent requests
+  const criticalStablecoins = ['USDT', 'USDC', 'DAI'] // Reduced from 7 to 3
+  
+  return criticalStablecoins.map((ticker) => ({
+    ticker: ticker.toLowerCase(),
+  }))
+}
+
+// Enable ISR with 1 hour revalidation
+export const revalidate = 3600 // 1 hour
+
+// Add build-time safety: Force dynamic rendering for non-critical pages
+export const dynamic = 'auto' // Allow Next.js to choose based on usage
+export const dynamicParams = true // Allow dynamic params not in generateStaticParams 

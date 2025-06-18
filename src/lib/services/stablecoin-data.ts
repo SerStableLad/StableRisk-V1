@@ -75,88 +75,63 @@ export class StablecoinDataService {
         console.log(generateMappingEntryString(newEntry))
       }
 
-      // Step 3: Get price history for stability analysis
-      const priceHistory = await this.getPriceHistory(coinId)
-
-      // Step 4: Get transparency data and update mapping if new data is discovered
-      console.log('Getting transparency data...')
+      // Step 3-5: PARALLEL DATA GATHERING
+      console.log('🚀 Starting parallel data gathering...')
       
-      let transparency: any = {
-        dashboard_url: null,
-        attestation_provider: null,
-        update_frequency: null,
-        has_proof_of_reserves: false,
-        verification_status: 'unknown'
-      }
+      // Define all async operations that can run in parallel
+      const parallelOperations = await Promise.allSettled([
+        // Operation 1: Get price history for stability analysis
+        this.getPriceHistory(coinId),
+        
+        // Operation 2: Get transparency data
+        this.getTransparencyDataParallel(ticker, info),
+        
+        // Operation 3: Get audit data
+        this.getAuditDataParallel(ticker, info)
+      ])
 
-      try {
-        // For known stablecoins, use mapping table data directly to avoid expensive API calls
-        if (isKnownStablecoin(ticker)) {
-          const knownTransparency = getKnownTransparencyData(ticker)
-          if (knownTransparency) {
-            transparency = knownTransparency
-            console.log(`✅ Using mapping table transparency data for ${ticker}`)
-          } else {
-            console.log(`📋 ${ticker} is known but has no transparency data in mapping table`)
+      // Extract results with proper error handling
+      const priceHistory = parallelOperations[0].status === 'fulfilled' 
+        ? parallelOperations[0].value 
+        : []
+      
+      const transparency = parallelOperations[1].status === 'fulfilled' 
+        ? parallelOperations[1].value 
+        : {
+            dashboard_url: null,
+            attestation_provider: null,
+            update_frequency: null,
+            has_proof_of_reserves: false,
+            verification_status: 'unknown'
           }
-        } else {
-          // For unknown stablecoins, try discovery (but with timeout to avoid hanging)
-          console.log(`🔍 ${ticker} not in mapping table, attempting discovery...`)
-          try {
-            const transparencyData = await Promise.race([
-              transparencyService.getTransparencyData(ticker, info.name, 
-                Array.isArray(info.official_links?.homepage) 
-                  ? info.official_links.homepage 
-                  : info.official_links?.homepage ? [info.official_links.homepage] : undefined
-              ),
-              new Promise((_, reject) => setTimeout(() => reject(new Error('Transparency discovery timeout')), 5000))
-            ]) as any
-            
-            if (transparencyData) {
-              transparency = transparencyData
-              console.log('✅ Transparency data discovered successfully')
-              
-              // Update mapping table with discovered data
-              if (transparencyData.dashboard_url && transparencyData.dashboard_url !== '') {
-                console.log(`🔄 Updating mapping with discovered transparency data for ${ticker}`)
-                updateMappingWithDiscoveredData(ticker, transparencyData)
-              }
-            }
-          } catch (discoveryError) {
-            console.warn(`⚠️ Transparency discovery failed for ${ticker}:`, discoveryError)
-          }
+      
+      const audits = parallelOperations[2].status === 'fulfilled' 
+        ? parallelOperations[2].value 
+        : []
+
+      // Log any failures
+      parallelOperations.forEach((result, index) => {
+        if (result.status === 'rejected') {
+          const operations = ['price history', 'transparency data', 'audit data']
+          console.warn(`⚠️ Failed to get ${operations[index]} for ${ticker}:`, result.reason)
         }
-      } catch (error) {
-        console.warn(`Failed to get transparency data for ${ticker}:`, error)
-      }
+      })
 
-      // Step 5: Get audit data
-      console.log('Getting audit data...')
-      let audits: any[] = []
-      
-      // Use audit discovery service for all stablecoins
-      const auditFolderUrl = getKnownAuditFolderUrl(ticker)
-      if (auditFolderUrl) {
-        console.log(`🔍 Discovering audits for ${ticker} from: ${auditFolderUrl}`)
-        const discoveredAudits = await this.auditDiscoveryService.discoverAudits(ticker, info?.name, [], [auditFolderUrl])
-        audits = discoveredAudits || [] // Ensure we always have an array
-        console.log(`📋 Found ${audits.length} audits for ${ticker}`)
-      } else {
-        console.log(`📋 No audit folder URL found for ${ticker}`)
-      }
+      console.log(`✅ Parallel data gathering complete for ${ticker}`)
+      console.log(`📊 Results: ${priceHistory.length} price points, transparency: ${transparency.dashboard_url ? 'found' : 'not found'}, ${audits.length} audits`)
       
       // Calculate basic risk factors based on available data
       const basicPegAnalysis = this.analyzePegStability(priceHistory)
       const auditScore = await this.calculateAuditStatusWithData(info, audits)
       
       // Calculate actual transparency score using the transparency service
-      let transparencyScore = 0
+      let transparencyScore: number | null = 0
       try {
         transparencyScore = transparencyService.calculateTransparencyScore(transparency)
         console.log(`✅ Calculated transparency score for ${ticker}: ${transparencyScore}`)
       } catch (error) {
         console.warn(`⚠️ Failed to calculate transparency score for ${ticker}:`, error)
-        transparencyScore = 50 // Fallback to default middle score
+        transparencyScore = null // Return null when data is not available
       }
       
       const riskFactors: any = {
@@ -176,7 +151,26 @@ export class StablecoinDataService {
       // Step 6: Calculate weighted risk score (1-100)
       const riskScore = this.calculateOverallRiskScore(riskFactors)
 
-      // Step 7: Build comprehensive assessment
+      // Step 7: PARALLEL FINAL DATA GATHERING for oracle and liquidity
+      const parallelResults = await Promise.allSettled([
+        this.getEnhancedOracleData(info),
+        this.getEnhancedLiquidityData(info, ticker)
+      ])
+
+      const oracleData = parallelResults[0].status === 'fulfilled' 
+        ? parallelResults[0].value 
+        : { providers: [], is_multi_oracle: false, decentralization_score: 0 }
+      
+      const liquidityData = parallelResults[1].status === 'fulfilled' 
+        ? parallelResults[1].value 
+        : { 
+            total_liquidity: 0, 
+            dex_distribution: [], 
+            concentration_risk: 'high' as const, 
+            chain_distribution: [] 
+          }
+
+      // Step 8: Build comprehensive assessment
       const pegAnalysis = this.analyzePegStability(priceHistory)
       const dataSources = ['CoinGecko']
       
@@ -204,8 +198,8 @@ export class StablecoinDataService {
         },
         audits,
         transparency,
-        oracle: await this.getEnhancedOracleData(info),
-        liquidity: await this.getEnhancedLiquidityData(info, ticker),
+        oracle: oracleData,
+        liquidity: liquidityData,
         last_updated: new Date().toISOString(),
         data_sources: dataSources,
       }
@@ -913,7 +907,7 @@ export class StablecoinDataService {
    * Takes into account real audit information when available
    */
   private async calculateAuditStatusWithData(info: StablecoinInfo | null, audits: AuditInfo[]): Promise<{
-    score: number
+    score: number | null
     details: Record<string, any>
   }> {
     const details: Record<string, any> = {}
@@ -997,7 +991,7 @@ export class StablecoinDataService {
    * Based on known audit information (legacy method)
    */
   private async calculateAuditStatus(info: StablecoinInfo): Promise<{
-    score: number
+    score: number | null
     details: Record<string, any>
   }> {
     const details: Record<string, any> = {}
@@ -1024,11 +1018,11 @@ export class StablecoinDataService {
       }
     }
 
-    // Unknown coins get lower audit scores
+    // Unknown coins return null to indicate no audit data available
     return {
-      score: 30,
+      score: null,
       details: {
-        auditor: 'Unknown',
+        auditor: 'Data not found',
         is_well_audited: false,
         has_audit_data: false
       }
@@ -1037,22 +1031,127 @@ export class StablecoinDataService {
 
   /**
    * Calculate overall weighted risk score
+   * Handles null scores by redistributing weights to available data
    */
   private calculateOverallRiskScore(riskFactors: RiskFactors): number {
-    const weights = {
+    const baseWeights = {
       peg_stability: 0.50,    // 50% (increased from 40%)
       transparency: 0.25,     // 25% (increased from 20%)
       liquidity: 0.15,        // 15%
       audit_status: 0.10,     // 10%
     }
 
-    const weightedScore = 
-      riskFactors.peg_stability.score * weights.peg_stability +
-      riskFactors.transparency.score * weights.transparency +
-      riskFactors.liquidity.score * weights.liquidity +
-      riskFactors.audit_status.score * weights.audit_status
+    // Calculate available weights (exclude null scores)
+    let totalAvailableWeight = 0
+    let weightedScore = 0
 
-    return Math.round(weightedScore)
+    // Always include peg stability (never null)
+    totalAvailableWeight += baseWeights.peg_stability
+    weightedScore += riskFactors.peg_stability.score * baseWeights.peg_stability
+
+    // Always include liquidity (never null)
+    totalAvailableWeight += baseWeights.liquidity
+    weightedScore += riskFactors.liquidity.score * baseWeights.liquidity
+
+    // Include transparency if available
+    if (riskFactors.transparency.score !== null) {
+      totalAvailableWeight += baseWeights.transparency
+      weightedScore += riskFactors.transparency.score * baseWeights.transparency
+    }
+
+    // Include audit if available
+    if (riskFactors.audit_status.score !== null) {
+      totalAvailableWeight += baseWeights.audit_status
+      weightedScore += riskFactors.audit_status.score * baseWeights.audit_status
+    }
+
+    // Normalize to 100% if some scores are missing
+    const finalScore = weightedScore / totalAvailableWeight
+
+    return Math.round(finalScore)
+  }
+
+  /**
+   * PARALLEL HELPER METHODS
+   */
+
+  /**
+   * Get transparency data in parallel (extracted from main flow)
+   */
+  private async getTransparencyDataParallel(ticker: string, info: StablecoinInfo): Promise<any> {
+    console.log('Getting transparency data...')
+    
+    let transparency: any = {
+      dashboard_url: null,
+      attestation_provider: null,
+      update_frequency: null,
+      has_proof_of_reserves: false,
+      verification_status: 'unknown'
+    }
+
+    try {
+      // For known stablecoins, use mapping table data directly to avoid expensive API calls
+      if (isKnownStablecoin(ticker)) {
+        const knownTransparency = getKnownTransparencyData(ticker)
+        if (knownTransparency) {
+          transparency = knownTransparency
+          console.log(`✅ Using mapping table transparency data for ${ticker}`)
+        } else {
+          console.log(`📋 ${ticker} is known but has no transparency data in mapping table`)
+        }
+      } else {
+        // For unknown stablecoins, try discovery (but with timeout to avoid hanging)
+        console.log(`🔍 ${ticker} not in mapping table, attempting discovery...`)
+        try {
+          const transparencyData = await Promise.race([
+            transparencyService.getTransparencyData(ticker, info.name, 
+              Array.isArray(info.official_links?.homepage) 
+                ? info.official_links.homepage 
+                : info.official_links?.homepage ? [info.official_links.homepage] : undefined
+            ),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('Transparency discovery timeout')), 5000))
+          ]) as any
+          
+          if (transparencyData) {
+            transparency = transparencyData
+            console.log('✅ Transparency data discovered successfully')
+            
+            // Update mapping table with discovered data
+            if (transparencyData.dashboard_url && transparencyData.dashboard_url !== '') {
+              console.log(`🔄 Updating mapping with discovered transparency data for ${ticker}`)
+              updateMappingWithDiscoveredData(ticker, transparencyData)
+            }
+          }
+        } catch (discoveryError) {
+          console.warn(`⚠️ Transparency discovery failed for ${ticker}:`, discoveryError)
+        }
+      }
+    } catch (error) {
+      console.warn(`Failed to get transparency data for ${ticker}:`, error)
+    }
+
+    return transparency
+  }
+
+  /**
+   * Get audit data in parallel (extracted from main flow)
+   */
+  private async getAuditDataParallel(ticker: string, info: StablecoinInfo): Promise<any[]> {
+    console.log('Getting audit data...')
+    let audits: any[] = []
+    
+    // Use audit discovery service for all stablecoins
+    const auditFolderUrl = getKnownAuditFolderUrl(ticker)
+    if (auditFolderUrl) {
+      console.log(`🔍 Discovering audits for ${ticker} from: ${auditFolderUrl}`)
+      const discoveredAudits = await this.auditDiscoveryService.discoverAudits(ticker, info?.name, [], [auditFolderUrl])
+      audits = discoveredAudits || [] // Ensure we always have an array
+      console.log(`📋 Found ${audits.length} audits for ${ticker}`)
+    } else {
+      console.log(`📋 No audit folder URL found for ${ticker}`)
+    }
+
+    return audits
   }
 
   /**

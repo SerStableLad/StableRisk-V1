@@ -69,4 +69,19 @@ test-*.md
 *.test.ts
 
 # Configuration files with sensitive data
-src/lib/config.ts 
+src/lib/config.ts
+
+# Added by Task Master AI
+dev-debug.log
+# Dependency directories
+node_modules/
+# Environment variables
+# Editor directories and files
+.idea
+.vscode
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+# OS specific
