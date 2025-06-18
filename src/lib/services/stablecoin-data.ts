@@ -146,16 +146,47 @@ export class StablecoinDataService {
       
       // Calculate basic risk factors based on available data
       const basicPegAnalysis = this.analyzePegStability(priceHistory)
-      const auditScore = await this.calculateAuditStatusWithData(info, audits)
+      
+      // Calculate audit score - return null if no meaningful audit data
+      let auditScore: { score: number | null, details: Record<string, any> }
+      if (audits && audits.length > 0) {
+        // We have actual audit data
+        auditScore = await this.calculateAuditStatusWithData(info, audits)
+      } else {
+        // No audit data found - return null instead of fallback scoring
+        console.log(`📊 No audit data found for ${ticker} - setting score to null`)
+        auditScore = {
+          score: null,
+          details: {
+            auditor: 'No audit data found',
+            is_well_audited: false,
+            has_audit_data: false,
+            no_data_found: true
+          }
+        }
+      }
       
       // Calculate actual transparency score using the transparency service
-      let transparencyScore = 0
+      let transparencyScore: number | null = null
       try {
-        transparencyScore = transparencyService.calculateTransparencyScore(transparency)
-        console.log(`✅ Calculated transparency score for ${ticker}: ${transparencyScore}`)
+        // Check if we have any meaningful transparency data
+        const hasTransparencyData = !!(
+          transparency.dashboard_url || 
+          transparency.has_proof_of_reserves ||
+          transparency.attestation_provider ||
+          transparency.update_frequency !== 'unknown'
+        )
+        
+        if (hasTransparencyData) {
+          transparencyScore = transparencyService.calculateTransparencyScore(transparency)
+          console.log(`✅ Calculated transparency score for ${ticker}: ${transparencyScore}`)
+        } else {
+          console.log(`📊 No transparency data found for ${ticker} - setting score to null`)
+          transparencyScore = null
+        }
       } catch (error) {
         console.warn(`⚠️ Failed to calculate transparency score for ${ticker}:`, error)
-        transparencyScore = 50 // Fallback to default middle score
+        transparencyScore = null // Use null instead of fallback score when there's an error
       }
       
       const riskFactors: any = {
@@ -163,7 +194,7 @@ export class StablecoinDataService {
           score: basicPegAnalysis.isCurrentlyDepegged ? 20 : 80, 
           details: { avgDeviation: basicPegAnalysis.avgDeviation } 
         },
-        transparency: { score: transparencyScore, details: {} },
+        transparency: { score: transparencyScore, details: {} }, // transparencyScore can now be null
         liquidity: { 
           score: info.market_cap > 1_000_000_000 ? 80 : 60, 
           details: { market_cap: info.market_cap } 
@@ -188,7 +219,7 @@ export class StablecoinDataService {
         risk_scores: {
           overall: riskScore,
           peg_stability: riskFactors.peg_stability.score,
-          transparency: riskFactors.transparency.score,
+          transparency: riskFactors.transparency.score, // Can now be null
           liquidity: riskFactors.liquidity.score,
           oracle: riskFactors.oracle_setup.score,
           audit: riskFactors.audit_status.score,
@@ -1036,6 +1067,7 @@ export class StablecoinDataService {
 
   /**
    * Calculate overall weighted risk score
+   * Skips null scores (no data found) without adjusting weights
    */
   private calculateOverallRiskScore(riskFactors: RiskFactors): number {
     const weights = {
@@ -1045,11 +1077,21 @@ export class StablecoinDataService {
       audit_status: 0.10,     // 10%
     }
 
-    const weightedScore = 
-      riskFactors.peg_stability.score * weights.peg_stability +
-      riskFactors.transparency.score * weights.transparency +
-      riskFactors.liquidity.score * weights.liquidity +
-      riskFactors.audit_status.score * weights.audit_status
+    let weightedScore = 0
+    
+    // Always include peg stability and liquidity (they're never null)
+    weightedScore += riskFactors.peg_stability.score * weights.peg_stability
+    weightedScore += riskFactors.liquidity.score * weights.liquidity
+    
+    // Only include transparency if data is available (not null)
+    if (riskFactors.transparency.score !== null) {
+      weightedScore += riskFactors.transparency.score * weights.transparency
+    }
+    
+    // Only include audit if data is available (not null)
+    if (riskFactors.audit_status.score !== null) {
+      weightedScore += riskFactors.audit_status.score * weights.audit_status
+    }
 
     return Math.round(weightedScore)
   }

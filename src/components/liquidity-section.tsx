@@ -415,7 +415,8 @@ export function LiquiditySection({ ticker, data: propData }: LiquiditySectionPro
         </p>
       </div>
 
-      {/* Liquidity Issues Alert */}
+      {/* Liquidity Issues Alert - TEMPORARILY COMMENTED OUT */}
+      {/*
       {data.liquidity_issues.length > 0 && (
         <Alert className="border-yellow-200 bg-yellow-50">
           <AlertTriangle className="h-4 w-4" />
@@ -429,6 +430,7 @@ export function LiquiditySection({ ticker, data: propData }: LiquiditySectionPro
           </AlertDescription>
         </Alert>
       )}
+      */}
 
       {/* Liquidity Overview */}
       <Card>
@@ -772,7 +774,8 @@ export function LiquiditySection({ ticker, data: propData }: LiquiditySectionPro
         </Card>
       )}
 
-      {/* Liquidation Risk Assessment */}
+      {/* Liquidation Risk Assessment - TEMPORARILY COMMENTED OUT */}
+      {/*
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center space-x-2">
@@ -824,6 +827,7 @@ export function LiquiditySection({ ticker, data: propData }: LiquiditySectionPro
           </div>
         </CardContent>
       </Card>
+      */}
 
       {/* Last Liquidity Crisis */}
       {data.last_liquidity_crisis && (

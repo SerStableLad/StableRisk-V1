@@ -174,7 +174,16 @@ export class CoinGeckoService {
         }
       }
     } catch (error) {
-      console.error('CoinGecko coin info error:', error)
+      console.error('CoinGecko coin info error:', {
+        coinId,
+        error: error instanceof Error ? {
+          name: error.name,
+          message: error.message,
+          stack: error.stack
+        } : error,
+        errorType: typeof error,
+        errorString: String(error)
+      })
       return null
     }
   }
@@ -201,7 +210,15 @@ export class CoinGeckoService {
         deviation_percent: ((price - 1) / 1) * 100, // Deviation from $1 peg
       }))
     } catch (error) {
-      console.error('CoinGecko price history error:', error)
+      console.error('CoinGecko price history error:', {
+        coinId,
+        days,
+        error: error instanceof Error ? {
+          name: error.name,
+          message: error.message
+        } : error,
+        errorString: String(error)
+      })
       return []
     }
   }
@@ -224,7 +241,14 @@ export class CoinGeckoService {
 
       return data[coinId]?.usd || null
     } catch (error) {
-      console.error('CoinGecko current price error:', error)
+      console.error('CoinGecko current price error:', {
+        coinId,
+        error: error instanceof Error ? {
+          name: error.name,
+          message: error.message
+        } : error,
+        errorString: String(error)
+      })
       return null
     }
   }
@@ -246,7 +270,15 @@ export class CoinGeckoService {
 
       return data.market_data.current_price.usd
     } catch (error) {
-      console.error('CoinGecko historical price error:', error)
+      console.error('CoinGecko historical price error:', {
+        coinId,
+        date,
+        error: error instanceof Error ? {
+          name: error.name,
+          message: error.message
+        } : error,
+        errorString: String(error)
+      })
       return null
     }
   }
@@ -355,7 +387,14 @@ export class CoinGeckoService {
       }
       
     } catch (error) {
-      console.error('Error extracting blockchain platforms:', error)
+      console.error('Error extracting blockchain platforms:', {
+        data: data ? { id: data.id, symbol: data.symbol } : 'No data',
+        error: error instanceof Error ? {
+          name: error.name,
+          message: error.message
+        } : error,
+        errorString: String(error)
+      })
       return 'Unknown'
     }
   }
@@ -431,7 +470,14 @@ export class CoinGeckoService {
         platforms
       }
     } catch (error) {
-      console.error('CoinGecko token data error:', error)
+      console.error('CoinGecko token data error:', {
+        coinId,
+        error: error instanceof Error ? {
+          name: error.name,
+          message: error.message
+        } : error,
+        errorString: String(error)
+      })
       return null
     }
   }

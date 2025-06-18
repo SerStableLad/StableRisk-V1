@@ -4,7 +4,7 @@ import { AuditInfo } from '@/lib/types'
 import { cacheService } from './cache-service'
 import { metricsService } from './metrics-service'
 import { playwrightScraperService } from './playwright-scraper'
-import { hybridScraperService } from './hybrid-scraper'
+
 import { 
   getKnownAuditFolderUrl, 
   isKnownStablecoin, 
@@ -169,22 +169,31 @@ export class AuditDiscoveryService {
       // Prepare search tasks
       const searchTasks: Promise<{source: string, audits: AuditInfo[]}>[] = [];
       
-      // Add GitHub search if repositories are available
+      // 🚀 SMART EXECUTION ORDER: Try GitHub first (fast), then web crawling (slow)
+      
+      // Step 1: Try GitHub search first (fast GitHub API)
       if (githubRepos && githubRepos.length > 0) {
-        console.log(`📂 Adding GitHub search task for ${githubRepos.length} repositories`);
-        searchTasks.push(
-          this.searchOfficialRepositories(githubRepos, stablecoinSymbol)
-            .then(audits => ({ source: 'github', audits }))
-            .catch(error => {
-              console.error('GitHub search failed:', error);
-              return { source: 'github', audits: [] as AuditInfo[] };
-            })
-        );
+        console.log(`📂 Trying GitHub search first for ${githubRepos.length} repositories`);
+        try {
+          const githubAudits = await this.searchOfficialRepositories(githubRepos, stablecoinSymbol);
+          if (githubAudits.length > 0) {
+            console.log(`🎯 SUCCESS: Found ${githubAudits.length} audits from GitHub - skipping expensive web crawling`);
+            
+            // Cache and return immediately - no need for web crawling
+            cacheService.set(cacheKey, githubAudits, 6 * 60 * 60 * 1000);
+            metricsService.recordApiDuration(`auditDiscovery:${stablecoinSymbol}`, Date.now() - startTime);
+            return githubAudits;
+          } else {
+            console.log(`📂 GitHub search found no audits, will try web crawling`);
+          }
+        } catch (error) {
+          console.error('GitHub search failed:', error);
+        }
       }
       
-      // Add dev/tech docs search if homepage URLs are available
+      // Step 2: Only do expensive web crawling if GitHub didn't find anything
       if (homepageUrls && homepageUrls.length > 0) {
-        console.log(`🌐 Adding dev/tech docs search task for ${homepageUrls.length} URLs`);
+        console.log(`🌐 GitHub found no audits, falling back to web crawling for ${homepageUrls.length} URLs`);
         searchTasks.push(
           this.searchDevTechDocs(homepageUrls, stablecoinSymbol)
             .then(audits => ({ source: 'devdocs', audits }))
@@ -340,7 +349,8 @@ export class AuditDiscoveryService {
   }
 
   /**
-   * Execute parallel searches with intelligent early termination
+   * Execute parallel searches with TRUE early termination
+   * 🚀 STOPS other searches as soon as one finds audits
    */
   private async executeParallelSearchWithEarlyTermination(
     searchTasks: Promise<{source: string, audits: AuditInfo[]}>[], 
@@ -351,35 +361,45 @@ export class AuditDiscoveryService {
     const startTime = Date.now();
     const completedResults: {source: string, audits: AuditInfo[]}[] = [];
     
-    // 🚀 EARLY TERMINATION: Use Promise.race to stop as soon as we find audits
+    // 🚀 TRUE EARLY TERMINATION: Use Promise.allSettled with early exit
     const racePromises = searchTasks.map(async (task, index) => {
       try {
         const result = await task;
-        
         console.log(`✅ ${result.source} search completed: ${result.audits.length} audits found`);
-        
-        // 🎯 IMMEDIATE FOCUS: If we found audits, this is our winner
-        if (result.audits.length > 0) {
-          console.log(`🚀 FOCUS MODE: Found ${result.audits.length} audits from ${result.source} - prioritizing this source`);
-          return { ...result, priority: true };
-        }
-        
-        return { ...result, priority: false };
+        return { ...result, index, success: true };
       } catch (error) {
         console.error(`❌ Search task ${index} failed:`, error);
-        return { source: `task-${index}`, audits: [], priority: false };
+        return { source: `task-${index}`, audits: [], index, success: false };
       }
     });
     
-    // Wait for all tasks but prioritize the first successful one
-    const allResults = await Promise.all(racePromises);
+    // 🎯 RACE FOR FIRST SUCCESS: Stop as soon as we find audits
+    let foundAudits = false;
+    const results: any[] = [];
     
-    // 🎯 FOCUS STRATEGY: If any source found audits, prioritize it
-    const successfulResults = allResults.filter(result => result.audits.length > 0);
-    const failedResults = allResults.filter(result => result.audits.length === 0);
+    // Use Promise.allSettled but check results as they complete
+    const settledResults = await Promise.allSettled(racePromises);
+    
+    // Process results and prioritize successful ones
+    for (const settledResult of settledResults) {
+      if (settledResult.status === 'fulfilled') {
+        const result = settledResult.value;
+        results.push(result);
+        
+        // 🚀 EARLY EXIT: If we found audits, we can stop caring about other searches
+        if (result.audits.length > 0 && !foundAudits) {
+          foundAudits = true;
+          console.log(`🎯 EARLY SUCCESS: Found ${result.audits.length} audits from ${result.source} - other searches become low priority`);
+        }
+      }
+    }
+    
+    // 🎯 FOCUS STRATEGY: Prioritize successful results
+    const successfulResults = results.filter(result => result.audits.length > 0);
+    const failedResults = results.filter(result => result.audits.length === 0);
     
     if (successfulResults.length > 0) {
-      console.log(`🎯 FOCUSING: Found ${successfulResults.length} successful sources, de-prioritizing ${failedResults.length} empty sources`);
+      console.log(`🎯 FOCUSING: Found ${successfulResults.length} successful sources, ignoring ${failedResults.length} empty sources`);
       
       // Sort successful results by audit count (best first)
       successfulResults.sort((a, b) => b.audits.length - a.audits.length);
@@ -388,7 +408,8 @@ export class AuditDiscoveryService {
       completedResults.push(...successfulResults.map(r => ({ source: r.source, audits: r.audits })));
     } else {
       // If no audits found anywhere, return all results for debugging
-      completedResults.push(...allResults.map(r => ({ source: r.source, audits: r.audits })));
+      console.log(`❌ No audits found in any source for ${symbol}`);
+      completedResults.push(...results.map(r => ({ source: r.source, audits: r.audits })));
     }
     
     const totalTime = Date.now() - startTime;
@@ -795,8 +816,8 @@ export class AuditDiscoveryService {
       if (needsJavaScriptScraping) {
         console.log(`🔍 Detected JavaScript-rendered site, using Playwright for ${url}`)
         
-        // Use Hybrid scraper for much faster performance (static first, JS fallback)
-        const scrapedContent = await hybridScraperService.scrapePage(url, {
+        // Use Playwright scraper for JavaScript-rendered sites
+        const scrapedContent = await playwrightScraperService.scrapePage(url, {
           timeout: 10000 // Reduced from 20s to 10s
         })
         
