@@ -170,7 +170,7 @@ async function DashboardContent({ ticker }: { ticker: string }) {
   }
 
   // Calculate overall score (you might want to use your actual scoring logic)
-  const overallScore = assessment.risk_scores?.overall ?? 0
+  const overallScore = assessment.risk_scores?.overall ?? null
 
   // Transform risk factors for the cards
   const riskFactors = {

@@ -2,7 +2,7 @@ import React from "react"
 import { cn } from "@/lib/utils"
 
 interface RiskScoreMeterProps {
-  score: number
+  score: number | null
   size?: "sm" | "md" | "lg"
   className?: string
   showScore?: boolean
@@ -14,6 +14,22 @@ export function RiskScoreMeter({
   className,
   showScore = true 
 }: RiskScoreMeterProps) {
+  // Handle null score case
+  if (score === null) {
+    return (
+      <div className={cn("relative flex flex-col items-center", className)}>
+        <div className="text-center">
+          <div className="text-muted-foreground text-lg font-medium">
+            No data found
+          </div>
+          <div className="text-muted-foreground text-sm mt-2">
+            Risk Assessment
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   // Determine risk level and color
   const getRiskLevel = (score: number) => {
     if (score <= 30) return { level: "High Risk", color: "text-red-500", bgColor: "stroke-red-500" }

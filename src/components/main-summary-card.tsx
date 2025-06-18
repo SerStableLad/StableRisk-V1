@@ -23,16 +23,16 @@ interface StablecoinInfo {
 }
 
 interface RiskScores {
-  overall: number
-  peg_stability: number
-  transparency: number
-  liquidity: number
-  audit: number
+  overall: number | null
+  peg_stability: number | null
+  transparency: number | null
+  liquidity: number | null
+  audit: number | null
 }
 
 interface MainSummaryCardProps {
   info: StablecoinInfo
-  overallScore: number
+  overallScore: number | null
   riskScores: RiskScores
   confidenceScore: number
   summary: string
@@ -113,10 +113,10 @@ export function MainSummaryCard({
     }
 
     return {
-      pegStability: Math.round(riskScores.peg_stability * weights.peg_stability),
-      transparency: Math.round(riskScores.transparency * weights.transparency),
-      liquidity: Math.round(riskScores.liquidity * weights.liquidity),
-      audit: Math.round(riskScores.audit * weights.audit),
+      pegStability: riskScores.peg_stability !== null ? Math.round(riskScores.peg_stability * weights.peg_stability) : null,
+      transparency: riskScores.transparency !== null ? Math.round(riskScores.transparency * weights.transparency) : null,
+      liquidity: riskScores.liquidity !== null ? Math.round(riskScores.liquidity * weights.liquidity) : null,
+      audit: riskScores.audit !== null ? Math.round(riskScores.audit * weights.audit) : null,
       maxPegStability: Math.round(100 * weights.peg_stability),
       maxTransparency: Math.round(100 * weights.transparency),
       maxLiquidity: Math.round(100 * weights.liquidity),
@@ -232,24 +232,32 @@ export function MainSummaryCard({
               <div className="space-y-2 text-xs text-muted-foreground">
                 <div className="flex justify-between items-center">
                   <span>Peg Stability (40%)</span>
-                  <span className="font-medium">{scoreBreakdown.pegStability}/{scoreBreakdown.maxPegStability}</span>
+                  <span className="font-medium">
+                    {scoreBreakdown.pegStability !== null ? `${scoreBreakdown.pegStability}/${scoreBreakdown.maxPegStability}` : 'No data found'}
+                  </span>
                 </div>
                 <div className="flex justify-between items-center">
                   <span>Transparency (20%)</span>
-                  <span className="font-medium">{scoreBreakdown.transparency}/{scoreBreakdown.maxTransparency}</span>
+                  <span className="font-medium">
+                    {scoreBreakdown.transparency !== null ? `${scoreBreakdown.transparency}/${scoreBreakdown.maxTransparency}` : 'No data found'}
+                  </span>
                 </div>
                 <div className="flex justify-between items-center">
                   <span>Liquidity (15%)</span>
-                  <span className="font-medium">{scoreBreakdown.liquidity}/{scoreBreakdown.maxLiquidity}</span>
+                  <span className="font-medium">
+                    {scoreBreakdown.liquidity !== null ? `${scoreBreakdown.liquidity}/${scoreBreakdown.maxLiquidity}` : 'No data found'}
+                  </span>
                 </div>
                 <div className="flex justify-between items-center">
                   <span>Audit Status (10%)</span>
-                  <span className="font-medium">{scoreBreakdown.audit}/{scoreBreakdown.maxAudit}</span>
+                  <span className="font-medium">
+                    {scoreBreakdown.audit !== null ? `${scoreBreakdown.audit}/${scoreBreakdown.maxAudit}` : 'No data found'}
+                  </span>
                 </div>
                 <div className="border-t pt-2 mt-2">
                   <div className="flex justify-between items-center font-medium">
                     <span>Total Score</span>
-                    <span>{overallScore}/100</span>
+                    <span>{overallScore !== null ? `${overallScore}/100` : 'No data found'}</span>
                   </div>
                 </div>
               </div>

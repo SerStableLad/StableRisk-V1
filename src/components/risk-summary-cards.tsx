@@ -58,14 +58,14 @@ export function RiskSummaryCards({
   }
 
   const getRiskLevel = (score: number | null) => {
-    if (score === null) return "Unrated"
+    if (score === null) return "No data found"
     if (score <= 30) return "High Risk"
     if (score <= 60) return "Medium Risk"
     return "Low Risk"
   }
 
   const formatScore = (score: number | null) => {
-    return score !== null ? score.toString() : "N/A"
+    return score !== null ? score.toString() : "No data found"
   }
 
   const RiskCard = ({ 
