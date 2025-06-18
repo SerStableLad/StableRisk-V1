@@ -23,10 +23,10 @@ export interface StablecoinInfo {
 export interface RiskScores {
   overall: number
   peg_stability: number
-  transparency: number | null
+  transparency: number
   liquidity: number
   // oracle: number // Disabled oracle functionality
-  audit: number | null
+  audit: number
 }
 
 // New tiered response types
@@ -176,7 +176,7 @@ export interface RiskFactors {
     details: Record<string, any>
   }
   transparency: {
-    score: number | null
+    score: number
     details: Record<string, any>
   }
   liquidity: {
@@ -188,7 +188,7 @@ export interface RiskFactors {
   //   details: Record<string, any>
   // }
   audit_status: {
-    score: number | null
+    score: number
     details: Record<string, any>
   }
 }

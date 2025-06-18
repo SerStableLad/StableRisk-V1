@@ -1,4 +1,4 @@
-import puppeteer, { Browser, Page } from 'puppeteer'
+import { chromium, Browser, Page } from 'playwright'
 import { cacheService } from './cache-service'
 
 export interface ScrapingOptions {
@@ -6,7 +6,7 @@ export interface ScrapingOptions {
   timeout?: number
   userAgent?: string
   viewport?: { width: number; height: number }
-  waitUntil?: 'load' | 'domcontentloaded' | 'networkidle0' | 'networkidle2'
+  waitUntil?: 'load' | 'domcontentloaded' | 'networkidle'
 }
 
 export interface ScrapedContent {
@@ -20,11 +20,12 @@ export interface ScrapedContent {
 }
 
 /**
- * Reusable JavaScript scraping service using Puppeteer
+ * Reusable JavaScript scraping service using Playwright
  * Handles JavaScript-rendered content that basic fetch() cannot access
+ * Drop-in replacement for JavaScriptScraperService with better performance
  */
-export class JavaScriptScraperService {
-  private cacheKeyPrefix = 'js-scraper:'
+export class PlaywrightScraperService {
+  private cacheKeyPrefix = 'playwright-scraper:'
   private cacheTTL = 86400 // 24 hours
 
   /**
@@ -36,51 +37,43 @@ export class JavaScriptScraperService {
     // Check cache first
     const cached = await cacheService.get(cacheKey)
     if (cached) {
-      console.log(`📦 Cache hit for JS scraping: ${url}`)
+      console.log(`📦 Cache hit for Playwright scraping: ${url}`)
       return cached as ScrapedContent
     }
 
-    console.log(`🔍 JS scraping (cache miss): ${url}`)
+    console.log(`🎭 Playwright scraping (cache miss): ${url}`)
 
     let browser: Browser | null = null
     let page: Page | null = null
 
     try {
-      // Launch browser with appropriate options
-      browser = await puppeteer.launch({
+      // Launch browser with Playwright
+      browser = await chromium.launch({
         headless: true,
         args: [
           '--no-sandbox',
-          '--disable-setuid-sandbox',
           '--disable-dev-shm-usage',
-          '--disable-accelerated-2d-canvas',
-          '--no-first-run',
-          '--no-zygote',
           '--disable-gpu'
         ],
         timeout: options.timeout || 30000
       })
 
-      page = await browser.newPage()
-
-      // Set user agent
-      await page.setUserAgent(
-        options.userAgent || 
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-      )
-
-      // Set viewport
-      await page.setViewport(options.viewport || { width: 1366, height: 768 })
+      // Create page with user agent and viewport in one call
+      page = await browser.newPage({
+        userAgent: options.userAgent || 
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        viewport: options.viewport || { width: 1366, height: 768 }
+      })
 
       // Navigate to the URL
       console.log(`🌐 Navigating to ${url}`)
       await page.goto(url, {
-        waitUntil: options.waitUntil || 'networkidle2',
+        waitUntil: options.waitUntil || 'networkidle',
         timeout: options.timeout || 15000
       })
 
       // Wait for content to load (especially for React/Vue apps)
-      await new Promise(resolve => setTimeout(resolve, options.waitTime || 3000))
+      await page.waitForTimeout(options.waitTime || 3000)
 
       // Extract content
       const content = await page.evaluate(() => {
@@ -119,12 +112,12 @@ export class JavaScriptScraperService {
 
       // Cache the result
       await cacheService.set(cacheKey, result, this.cacheTTL)
-      console.log(`✅ Successfully scraped and cached: ${url}`)
+      console.log(`✅ Successfully scraped and cached with Playwright: ${url}`)
 
       return result
 
     } catch (error) {
-      console.error(`💥 Error scraping ${url}:`, error)
+      console.error(`💥 Error scraping ${url} with Playwright:`, error)
       
       const errorResult: ScrapedContent = {
         html: '',
@@ -143,14 +136,14 @@ export class JavaScriptScraperService {
         try {
           await page.close()
         } catch (e) {
-          console.warn('Error closing page:', e)
+          console.warn('Error closing Playwright page:', e)
         }
       }
       if (browser) {
         try {
           await browser.close()
         } catch (e) {
-          console.warn('Error closing browser:', e)
+          console.warn('Error closing Playwright browser:', e)
         }
       }
     }
@@ -207,40 +200,35 @@ export class JavaScriptScraperService {
     let page: Page | null = null
 
     try {
-      browser = await puppeteer.launch({
+      browser = await chromium.launch({
         headless: true,
         args: [
           '--no-sandbox',
-          '--disable-setuid-sandbox',
           '--disable-dev-shm-usage',
-          '--disable-accelerated-2d-canvas',
-          '--no-first-run',
-          '--no-zygote',
           '--disable-gpu'
         ],
         timeout: options.timeout || 30000
       })
 
-      page = await browser.newPage()
-      await page.setUserAgent(
-        options.userAgent || 
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-      )
-      await page.setViewport(options.viewport || { width: 1366, height: 768 })
+      page = await browser.newPage({
+        userAgent: options.userAgent || 
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        viewport: options.viewport || { width: 1366, height: 768 }
+      })
 
       await page.goto(url, {
-        waitUntil: options.waitUntil || 'networkidle2',
+        waitUntil: options.waitUntil || 'networkidle',
         timeout: options.timeout || 15000
       })
 
-      await new Promise(resolve => setTimeout(resolve, options.waitTime || 3000))
+      await page.waitForTimeout(options.waitTime || 3000)
 
       const data = await page.evaluate(extractorFunction)
 
       return { success: true, data }
 
     } catch (error) {
-      console.error(`💥 Error extracting data from ${url}:`, error)
+      console.error(`💥 Error extracting data from ${url} with Playwright:`, error)
       return { 
         success: false, 
         error: error instanceof Error ? error.message : 'Unknown error' 
@@ -251,14 +239,14 @@ export class JavaScriptScraperService {
         try {
           await page.close()
         } catch (e) {
-          console.warn('Error closing page:', e)
+          console.warn('Error closing Playwright page:', e)
         }
       }
       if (browser) {
         try {
           await browser.close()
         } catch (e) {
-          console.warn('Error closing browser:', e)
+          console.warn('Error closing Playwright browser:', e)
         }
       }
     }
@@ -266,4 +254,4 @@ export class JavaScriptScraperService {
 }
 
 // Export singleton instance
-export const jsScraperService = new JavaScriptScraperService() 
+export const playwrightScraperService = new PlaywrightScraperService() 

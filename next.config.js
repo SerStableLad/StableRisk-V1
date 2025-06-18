@@ -16,6 +16,14 @@ const nextConfig = {
   images: {
     formats: ['image/webp', 'image/avif'],
     minimumCacheTTL: 86400, // 24 hours
+    remotePatterns: [
+      {
+        protocol: 'https',
+        hostname: 'coin-images.coingecko.com',
+        port: '',
+        pathname: '/coins/images/**',
+      },
+    ],
   },
   
   // Bundle optimization
@@ -56,7 +64,7 @@ const nextConfig = {
             value: 'DENY'
           }
         ],
-      },
+  },
     ]
   },
 }

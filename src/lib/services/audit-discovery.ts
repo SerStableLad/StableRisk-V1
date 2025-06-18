@@ -3,7 +3,8 @@ import { config } from '@/lib/config'
 import { AuditInfo } from '@/lib/types'
 import { cacheService } from './cache-service'
 import { metricsService } from './metrics-service'
-import { jsScraperService } from './js-scraper'
+import { playwrightScraperService } from './playwright-scraper'
+import { hybridScraperService } from './hybrid-scraper'
 import { 
   getKnownAuditFolderUrl, 
   isKnownStablecoin, 
@@ -140,7 +141,7 @@ export class AuditDiscoveryService {
           }
           
           // Cache the successful result
-          cacheService.set(cacheKey, mappingAudits, 6 * 60 * 60 * 1000); // 6 hours
+          cacheService.set(cacheKey, mappingAudits, 24 * 60 * 60 * 1000); // 24 hours - audit data changes rarely
           metricsService.recordApiDuration(`auditDiscovery:${stablecoinSymbol}`, Date.now() - startTime);
           
           return mappingAudits;
@@ -155,7 +156,7 @@ export class AuditDiscoveryService {
       
       // Cache empty result to avoid repeated searches for known stablecoins with no audit URLs
       const emptyResult: AuditInfo[] = [];
-      cacheService.set(cacheKey, emptyResult, 6 * 60 * 60 * 1000);
+      cacheService.set(cacheKey, emptyResult, 12 * 60 * 60 * 1000); // 12 hours - avoid repeated expensive searches
       metricsService.recordApiDuration(`auditDiscovery:${stablecoinSymbol}`, Date.now() - startTime);
       
       return emptyResult;
@@ -208,6 +209,11 @@ export class AuditDiscoveryService {
         stablecoinSymbol
       );
       
+      // 🚀 IMMEDIATE FOCUS: If we found audits, stop all other searches
+      if (results.some(result => result.audits.length > 0)) {
+        console.log(`🎯 Found audits - focusing on successful sources, stopping other searches`);
+      }
+      
       // Process and finalize results
       const finalResults = this.finalizeParallelResults(results, stablecoinSymbol);
       
@@ -233,13 +239,34 @@ export class AuditDiscoveryService {
    * 
    * This method specifically handles curated audit URLs from our mapping table,
    * avoiding expensive search operations when we already have verified URLs.
+   * Optimized to use GitHub API for GitHub repositories instead of web scraping.
    */
   private async analyzeKnownAuditUrl(auditUrl: string, symbol: string): Promise<AuditInfo[]> {
     console.log(`📋 Analyzing curated audit URL: ${auditUrl}`);
     
     try {
-      // Use the existing dev/tech docs analysis which is perfect for this
-      const audits = await this.scrapeDevTechDocsPage(auditUrl, symbol);
+      // 🚀 OPTIMIZATION: Detect GitHub repositories and use fast GitHub API
+      if (this.isGitHubRepository(auditUrl)) {
+        console.log(`🐙 Detected GitHub repository, using fast GitHub API`);
+        const audits = await this.analyzeGitHubAuditRepository(auditUrl, symbol);
+        
+        if (audits.length > 0) {
+          console.log(`✅ Found ${audits.length} audits from GitHub repository`);
+          return audits;
+        } else {
+          console.warn(`⚠️ No audits found in GitHub repository: ${auditUrl}`);
+          return [];
+        }
+      }
+      
+      // 🐌 FALLBACK: Use slower web scraping for non-GitHub URLs
+      console.log(`🌐 Using web scraping for non-GitHub URL`);
+      const audits = await Promise.race([
+        this.scrapeDevTechDocsPage(auditUrl, symbol),
+        new Promise<AuditInfo[]>((_, reject) => 
+          setTimeout(() => reject(new Error('Timeout analyzing known audit URL')), 1500) // Reduced from 3s to 1.5s
+        )
+      ]);
       
       if (audits.length > 0) {
         console.log(`✅ Found ${audits.length} audits from curated URL`);
@@ -255,6 +282,64 @@ export class AuditDiscoveryService {
   }
 
   /**
+   * 🐙 Check if URL is a GitHub repository
+   */
+  private isGitHubRepository(url: string): boolean {
+    return /^https?:\/\/github\.com\/[^\/]+\/[^\/]+\/?$/.test(url);
+  }
+
+  /**
+   * 🚀 Fast analysis of GitHub audit repository using GitHub API
+   * 
+   * This method leverages the existing GitHub API infrastructure to quickly
+   * analyze audit repositories without expensive web scraping.
+   */
+  private async analyzeGitHubAuditRepository(auditUrl: string, symbol: string): Promise<AuditInfo[]> {
+    const startTime = Date.now();
+    
+    try {
+      // Extract owner/repo from GitHub URL
+      const repoMatch = auditUrl.match(/github\.com\/([^\/]+)\/([^\/]+)/);
+      if (!repoMatch) {
+        console.error(`❌ Invalid GitHub URL format: ${auditUrl}`);
+        return [];
+      }
+
+      const [, owner, repo] = repoMatch.map(part => part.replace(/\.git$/, ''));
+      console.log(`🔍 Fast GitHub analysis: ${owner}/${repo}`);
+
+      const audits: AuditInfo[] = [];
+
+      // Use existing optimized GitHub methods with timeout
+      const githubAnalysis = await Promise.race([
+        Promise.all([
+          this.findAuditFolders(owner, repo).then(folders => 
+            Promise.all(folders.map(folder => 
+              this.searchAuditFolder(owner, repo, folder, symbol)
+            ))
+          ).then(results => results.flat()),
+          this.searchRootAuditFiles(owner, repo, symbol)
+        ]).then(results => results.flat()),
+        new Promise<AuditInfo[]>((_, reject) => 
+          setTimeout(() => reject(new Error('GitHub API timeout')), 1000) // Reduced from 2s to 1s for GitHub API
+        )
+      ]);
+
+      audits.push(...githubAnalysis);
+
+      const duration = Date.now() - startTime;
+      console.log(`🚀 GitHub analysis completed in ${duration}ms, found ${audits.length} audits`);
+
+      return audits;
+
+    } catch (error) {
+      const duration = Date.now() - startTime;
+      console.error(`❌ GitHub analysis failed after ${duration}ms:`, error);
+      return [];
+    }
+  }
+
+  /**
    * Execute parallel searches with intelligent early termination
    */
   private async executeParallelSearchWithEarlyTermination(
@@ -264,30 +349,50 @@ export class AuditDiscoveryService {
     console.log(`⚡ Running ${searchTasks.length} search tasks in parallel for ${symbol}`);
     
     const startTime = Date.now();
-    
-    // Use Promise.allSettled to handle partial failures gracefully
-    const settledResults = await Promise.allSettled(searchTasks);
-    
-    // Process completed results
     const completedResults: {source: string, audits: AuditInfo[]}[] = [];
-    settledResults.forEach((result, index) => {
-      if (result.status === 'fulfilled') {
-        const { source, audits } = result.value;
-        completedResults.push({ source, audits });
+    
+    // 🚀 EARLY TERMINATION: Use Promise.race to stop as soon as we find audits
+    const racePromises = searchTasks.map(async (task, index) => {
+      try {
+        const result = await task;
         
-        console.log(`✅ ${source} search completed: ${audits.length} audits found`);
+        console.log(`✅ ${result.source} search completed: ${result.audits.length} audits found`);
         
-        // 🎯 EARLY TERMINATION: Log if we found sufficient audits
-        if (audits.length >= this.SUFFICIENT_AUDIT_COUNT) {
-          console.log(`🚀 Early termination criteria met: Found ${audits.length} audits from ${source} (>= ${this.SUFFICIENT_AUDIT_COUNT})`);
+        // 🎯 IMMEDIATE FOCUS: If we found audits, this is our winner
+        if (result.audits.length > 0) {
+          console.log(`🚀 FOCUS MODE: Found ${result.audits.length} audits from ${result.source} - prioritizing this source`);
+          return { ...result, priority: true };
         }
-        } else {
-        console.error(`❌ Search task ${index} failed:`, result.reason);
+        
+        return { ...result, priority: false };
+      } catch (error) {
+        console.error(`❌ Search task ${index} failed:`, error);
+        return { source: `task-${index}`, audits: [], priority: false };
       }
     });
     
+    // Wait for all tasks but prioritize the first successful one
+    const allResults = await Promise.all(racePromises);
+    
+    // 🎯 FOCUS STRATEGY: If any source found audits, prioritize it
+    const successfulResults = allResults.filter(result => result.audits.length > 0);
+    const failedResults = allResults.filter(result => result.audits.length === 0);
+    
+    if (successfulResults.length > 0) {
+      console.log(`🎯 FOCUSING: Found ${successfulResults.length} successful sources, de-prioritizing ${failedResults.length} empty sources`);
+      
+      // Sort successful results by audit count (best first)
+      successfulResults.sort((a, b) => b.audits.length - a.audits.length);
+      
+      // Return only the successful results (ignore empty ones)
+      completedResults.push(...successfulResults.map(r => ({ source: r.source, audits: r.audits })));
+    } else {
+      // If no audits found anywhere, return all results for debugging
+      completedResults.push(...allResults.map(r => ({ source: r.source, audits: r.audits })));
+    }
+    
     const totalTime = Date.now() - startTime;
-    console.log(`⚡ Parallel search completed in ${totalTime}ms`);
+    console.log(`⚡ Parallel search completed in ${totalTime}ms - focused on ${completedResults.length} sources`);
     
     return completedResults;
   }
@@ -471,7 +576,16 @@ export class AuditDiscoveryService {
       
       // Process each path
       for (const path of auditPaths) {
+        const initialCount = uniqueAudits.size;
         await this.checkDocPath(docsSite.url, path, symbol, uniqueAudits);
+        
+        // 🎯 IMMEDIATE FOCUS: If we found audits in this path, focus on this location
+        if (uniqueAudits.size > initialCount) {
+          const foundCount = uniqueAudits.size - initialCount;
+          console.log(`🎯 FOCUS: Found ${foundCount} audits in ${docsSite.url}${path} - focusing on this location`);
+          // Stop searching other paths in this site since we found audits here
+          break;
+        }
         
         // Early termination if we have enough audits
         if (uniqueAudits.size >= this.SUFFICIENT_AUDIT_COUNT) {
@@ -530,22 +644,17 @@ export class AuditDiscoveryService {
   }
 
   /**
-   * Get optimized paths for a specific site based on domain pattern matching
-   */
-  /**
    * 🎯 Get generic audit paths for documentation sites
    * Simplified approach using common audit path patterns
    */
   private getGenericAuditPaths(): string[] {
-    return [
-      '',  // Root of docs site
-      '/audits',
-      '/security',
-      '/security/audits',
+      return [
+        '',  // Root of docs site
+        '/audits',
+        '/security',
       '/docs/security',
       '/docs/audits',
-      '/technical/audits',
-      '/transparency/audits'
+      '/technical/audits'
     ];
   }
 
@@ -573,11 +682,7 @@ export class AuditDiscoveryService {
           'documentation', 
           'dev',
           'developers',
-          'api',
-          'help',
-          'support',
-          'wiki',
-          'guides'
+          'wiki'
         ]
         
         for (const subdomain of subdomainVariations) {
@@ -594,8 +699,7 @@ export class AuditDiscoveryService {
           `${protocol}//docs.${rootDomain}`,
           `${protocol}//${rootDomain.replace('.com', '')}-docs.com`,
           `${protocol}//${rootDomain.replace('.com', '')}.gitbook.io`,
-          `${protocol}//docs.${rootDomain.replace('.com', '')}.org`,
-          `${protocol}//${rootDomain.replace('.com', '')}.notion.site`
+          `${protocol}//docs.${rootDomain.replace('.com', '')}.org`
         ]
         
         for (const externalPattern of externalDocPatterns) {
@@ -642,7 +746,6 @@ export class AuditDiscoveryService {
       const docLinkPatterns = [
         /href=["']([^"']*(?:docs?|documentation|developer|api|help|guide|wiki)[^"']*)["']/gi,
         /href=["']([^"']*gitbook[^"']*)["']/gi,
-        /href=["']([^"']*notion[^"']*)["']/gi,
         /href=["']([^"']*confluence[^"']*)["']/gi
       ]
       
@@ -690,12 +793,11 @@ export class AuditDiscoveryService {
       let auditLinks: Array<{ href: string; text: string }> = []
       
       if (needsJavaScriptScraping) {
-        console.log(`🔍 Detected JavaScript-rendered site, using Puppeteer for ${url}`)
+        console.log(`🔍 Detected JavaScript-rendered site, using Playwright for ${url}`)
         
-        // Use JavaScript scraper to get rendered content
-        const scrapedContent = await jsScraperService.scrapePage(url, {
-          waitTime: 5000, // Wait longer for JS-heavy sites
-          timeout: 20000
+        // Use Hybrid scraper for much faster performance (static first, JS fallback)
+        const scrapedContent = await hybridScraperService.scrapePage(url, {
+          timeout: 10000 // Reduced from 20s to 10s
         })
         
         if (scrapedContent.success) {
@@ -732,37 +834,37 @@ export class AuditDiscoveryService {
         }
       } else {
         // Fall back to pattern-based extraction from HTML
-        const auditPatterns = [
-          // Standard href links
-          /href=["']([^"']*(?:audit|security)[^"']*)["']/gi,
-          // PDF files
-          /href=["']([^"']*\.pdf[^"']*)["']/gi,
-          // Audit firm names in links
-          /href=["']([^"']*(?:trail.of.bits|consensys|openzeppelin|quantstamp|chainsecurity|certik|peckshield|three.sigma|kirill.fedoseev|sherlock)[^"']*)["']/gi,
-        ]
+      const auditPatterns = [
+        // Standard href links
+        /href=["']([^"']*(?:audit|security)[^"']*)["']/gi,
+        // PDF files
+        /href=["']([^"']*\.pdf[^"']*)["']/gi,
+        // Audit firm names in links
+        /href=["']([^"']*(?:trail.of.bits|consensys|openzeppelin|quantstamp|chainsecurity|certik|peckshield|three.sigma|kirill.fedoseev|sherlock)[^"']*)["']/gi,
+      ]
 
         // Collect all unique URLs first to avoid duplicates
         const uniqueUrls = new Set<string>()
-        
-        // Look for audit-related links and content using patterns
-        let match
-        for (const pattern of auditPatterns) {
+
+      // Look for audit-related links and content using patterns
+      let match
+      for (const pattern of auditPatterns) {
           while ((match = pattern.exec(finalHtml)) !== null) {
-            try {
-              let auditUrl = match[1] || match[0]
-              
-              // Skip if it doesn't look like an audit-related URL
-              if (!this.isAuditRelatedUrl(auditUrl)) {
-                continue
-              }
-              
-              // Convert relative URLs to absolute
-              if (auditUrl.startsWith('/')) {
-                const baseUrl = new URL(url).origin
-                auditUrl = `${baseUrl}${auditUrl}`
-              } else if (!auditUrl.startsWith('http')) {
-                continue
-              }
+          try {
+            let auditUrl = match[1] || match[0]
+            
+            // Skip if it doesn't look like an audit-related URL
+            if (!this.isAuditRelatedUrl(auditUrl)) {
+              continue
+            }
+            
+            // Convert relative URLs to absolute
+            if (auditUrl.startsWith('/')) {
+              const baseUrl = new URL(url).origin
+              auditUrl = `${baseUrl}${auditUrl}`
+            } else if (!auditUrl.startsWith('http')) {
+              continue
+            }
 
               // Add to unique URLs set
               uniqueUrls.add(auditUrl)
@@ -804,10 +906,8 @@ export class AuditDiscoveryService {
     // Check for known JavaScript-rendered documentation platforms
     const jsRenderedPlatforms = [
       'gitbook.io',
-      'gitbook.com', 
-      'notion.site',
-      'docs.usdt0.to', // Specific case for USDT
-      'app.gitbook.com'
+      'docs.usdt0.to' // Specific case for USDT
+
     ]
     
     // Check URL for known platforms
@@ -854,9 +954,7 @@ export class AuditDiscoveryService {
       /\/docs\//i,              // /docs/ in path
       /\/documentation\//i,     // /documentation/ in path
       /\/security\//i,          // /security/ in path
-      /gitbook\.io/i,           // GitBook documentation
-      /notion\.site/i,          // Notion documentation
-      /readme\.io/i             // ReadMe documentation
+      /gitbook\.io/i           // GitBook documentation
     ];
     
     // Check if URL matches documentation patterns
@@ -965,7 +1063,7 @@ export class AuditDiscoveryService {
       try {
         const response = await fetch(url, { 
           headers: { 'User-Agent': 'Mozilla/5.0 (compatible; StableRisk/1.0)' },
-          signal: AbortSignal.timeout(10000)
+          signal: AbortSignal.timeout(3000)
         })
         if (response.ok) {
           html = await response.text()
@@ -1050,12 +1148,22 @@ export class AuditDiscoveryService {
         
         for (const folder of auditFolders) {
           const folderAudits = await this.searchAuditFolder(owner, repo, folder, symbol)
-          audits.push(...folderAudits)
+          if (folderAudits.length > 0) {
+            audits.push(...folderAudits)
+            console.log(`🎯 FOCUS: Found ${folderAudits.length} audits in ${folder} - focusing on this folder`)
+            // 🚀 EARLY TERMINATION: Found audits in this folder, stop searching other folders
+            break;
+          }
         }
 
-        // 2. Look for audit files in root/docs
-        const rootAudits = await this.searchRootAuditFiles(owner, repo, symbol)
-        audits.push(...rootAudits)
+        // 2. Only search root/docs if no audits found in dedicated folders
+        if (audits.length === 0) {
+          console.log(`🔍 No audits in dedicated folders, searching root/docs for ${owner}/${repo}`)
+          const rootAudits = await this.searchRootAuditFiles(owner, repo, symbol)
+          audits.push(...rootAudits)
+        } else {
+          console.log(`🚀 SKIP: Found ${audits.length} audits in folders, skipping root search for ${owner}/${repo}`)
+        }
 
       } catch (error) {
         console.error(`Error searching repository ${repoUrl}:`, error)

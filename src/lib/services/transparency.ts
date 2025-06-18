@@ -11,7 +11,7 @@ import { cacheService } from './cache-service'
 import { metricsService } from './metrics-service'
 import { ApiClient } from './api-client'
 import { config } from '@/lib/config'
-import puppeteer, { Browser, Page } from 'puppeteer'
+import { chromium, Browser, Page } from 'playwright'
 
 // Types for hybrid discovery
 interface DiscoveryResult {
@@ -190,9 +190,32 @@ export class TransparencyService {
           console.warn(`⏰ Mapping data for ${symbol} may be stale - recommend updating`)
         }
         
-        // 🔬 ENHANCED: Analyze the known dashboard URL for live content
+        // 🚀 OPTIMIZED: Skip expensive live analysis for trusted mapping data
+        const metadata = getMappingMetadata(symbol);
+        const isRecentData = metadata && !isMappingDataStale(symbol);
+        
+        if (isRecentData) {
+          console.log(`⚡ Using trusted mapping table data for ${symbol} (recent data, skipping expensive Playwright analysis)`);
+          
+          // Check for special attestation URLs (e.g., Dropbox)
+          const attestationUrl = getKnownAttestationUrl(symbol)
+          
+          // Use static mapping data with high confidence
+          const staticData = {
+            ...knownData,
+            attestation_url: attestationUrl || undefined,
+            confidence: 0.9 // High confidence for curated data
+          }
+          
+          cacheService.set(cacheKey, staticData, 24 * 60 * 60 * 1000); // 24 hours - transparency data changes rarely
+          metricsService.recordApiDuration(`transparencyFull:${symbol}`, Date.now() - startTime);
+          
+          return staticData;
+        }
+        
+        // 🔬 FALLBACK: Analyze the known dashboard URL for live content (expensive, only if data is stale)
         try {
-          console.log(`🔍 Analyzing live content from mapping table URL...`)
+          console.log(`🔍 Analyzing live content from mapping table URL (data may be stale, using expensive Playwright analysis)...`)
           const liveAnalysis = await this.analyzeDashboardContent(knownData.dashboard_url, symbol)
           
           if (liveAnalysis && this.isValidTransparencyData(liveAnalysis)) {
@@ -211,7 +234,7 @@ export class TransparencyService {
             }
             
             // Cache the enhanced result
-            cacheService.set(cacheKey, enhancedData, 6 * 60 * 60 * 1000); // 6 hours (TIER3)
+            cacheService.set(cacheKey, enhancedData, 24 * 60 * 60 * 1000); // 24 hours - transparency data changes rarely
             metricsService.recordApiDuration(`transparencyFull:${symbol}`, Date.now() - startTime);
             
             return enhancedData
@@ -1646,51 +1669,45 @@ export class TransparencyService {
   }
 
   /**
-   * 🔬 Analyze specific dashboard URL for live transparency data using Puppeteer
+   * 🔬 Analyze specific dashboard URL for live transparency data using Playwright
    * 
    * This method takes a curated URL from the mapping table and performs
    * comprehensive content analysis to extract real transparency metrics from
    * JavaScript-rendered content.
    */
   private async analyzeDashboardContent(url: string, symbol: string): Promise<TransparencyData | null> {
-    console.log(`🔍 Analyzing dashboard content for ${symbol} at ${url} with Puppeteer`)
+    console.log(`🔍 Analyzing dashboard content for ${symbol} at ${url} with Playwright`)
     
     let browser: Browser | null = null
     let page: Page | null = null
     
     try {
-      // Launch browser with appropriate options
-      browser = await puppeteer.launch({
+      // Launch browser with Playwright
+      browser = await chromium.launch({
         headless: true,
         args: [
           '--no-sandbox',
-          '--disable-setuid-sandbox',
           '--disable-dev-shm-usage',
-          '--disable-accelerated-2d-canvas',
-          '--no-first-run',
-          '--no-zygote',
           '--disable-gpu'
         ],
         timeout: 30000
       })
       
-      page = await browser.newPage()
-      
-      // Set user agent to appear as regular browser
-      await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
-      
-      // Set viewport
-      await page.setViewport({ width: 1366, height: 768 })
+      // Create page with user agent and viewport in one call
+      page = await browser.newPage({
+        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        viewport: { width: 1366, height: 768 }
+      })
       
       // Navigate to the URL with timeout
       console.log(`🌐 Navigating to ${url}`)
       await page.goto(url, {
-        waitUntil: 'networkidle2',
+        waitUntil: 'networkidle',
         timeout: 15000
       })
       
       // Wait for content to load (especially for React/Vue apps)
-      await new Promise(resolve => setTimeout(resolve, 3000))
+              await page.waitForTimeout(1500) // Reduced from 3s to 1.5s
       
       // Get page content after JavaScript execution
       const html = await page.content()
@@ -1783,7 +1800,7 @@ export class TransparencyService {
       // Extract last update date from HTML
       const lastUpdated = combinedAnalysis.lastUpdateDate || this.extractLastUpdateDate(html)
       
-      // Build transparency data combining Puppeteer extraction with traditional analysis
+      // Build transparency data combining Playwright extraction with traditional analysis
       const transparencyData: TransparencyData = {
         dashboard_url: url,
         update_frequency: (dashboardData.updateFrequency !== 'unknown' ? dashboardData.updateFrequency : 
@@ -1808,15 +1825,15 @@ export class TransparencyService {
       )
       
       if (hasRealData) {
-        console.log(`✅ Extracted meaningful transparency data from dashboard using Puppeteer`)
+        console.log(`✅ Extracted meaningful transparency data from dashboard using Playwright`)
         return transparencyData
       } else {
-        console.warn(`⚠️ Dashboard analysis found minimal meaningful data even with Puppeteer`)
+        console.warn(`⚠️ Dashboard analysis found minimal meaningful data even with Playwright`)
         return null
       }
       
     } catch (error) {
-      console.error(`💥 Error analyzing dashboard content for ${symbol} with Puppeteer:`, error)
+      console.error(`💥 Error analyzing dashboard content for ${symbol} with Playwright:`, error)
       return null
     } finally {
       // Clean up resources
@@ -1824,14 +1841,14 @@ export class TransparencyService {
         try {
           await page.close()
         } catch (e) {
-          console.warn('Error closing page:', e)
+          console.warn('Error closing Playwright page:', e)
         }
       }
       if (browser) {
         try {
           await browser.close()
         } catch (e) {
-          console.warn('Error closing browser:', e)
+          console.warn('Error closing Playwright browser:', e)
         }
       }
     }

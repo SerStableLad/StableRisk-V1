@@ -38,7 +38,7 @@ StableRisk is a single-page web app that provides users with a comprehensive ris
 - **Peg Stability:**  
   - Detect depeg if price deviates >4% from peg  
   - Fast recovery defined as recovery within 12 hours  
-  - If no recovery within 1 month, stablecoin marked as depegged and score set to 0
+  - If no recovery within 1 month, stablecoin marked as depegged and score set to 0  
   - **Fixed mathematical consistency** in deviation calculations (avg vs max)
 
 ---
@@ -60,13 +60,13 @@ StableRisk is a single-page web app that provides users with a comprehensive ris
 - **Audit data:**  
   - Enhanced 4-layer intelligent discovery system with wildcard pattern matching
   - Removed hardcoded mappings in favor of dynamic discovery
-  - Link harvesting & content analysis from multiple sources  
+  - Link harvesting & content analysis from multiple sources
   - Only audits from last 6 months displayed  
   - Extract audit firm, date, outstanding issues, critical/high issues, resolution status  
 - **Transparency & Proof of Reserves:**  
   - Enhanced dashboard discovery system working for 100+ stablecoins
   - Sourced from official project websites  
-  - If no PoR found, display "No Proof of Reserve found"
+  - If no PoR found, display "No Proof of Reserve found"  
   - **Real-time transparency scoring** integrated with mapping table
 - **Oracle & Liquidity:**  
   - Enhanced multi-provider oracle analysis with decentralization scoring
@@ -94,7 +94,7 @@ StableRisk is a single-page web app that provides users with a comprehensive ris
 - Show "Stablecoin not found" for invalid ticker  
 - Shareable report link re-queries fresh data on load  
 - Display data and labels only in English  
-- Mobile responsive design
+- Mobile responsive design  
 - **2-column responsive layout** for major trading venues and audit reports
 - **Hidden scoring methodology** section (moved from prominent display)
 
@@ -105,13 +105,13 @@ StableRisk is a single-page web app that provides users with a comprehensive ris
 - **Peg Stability Section:**  
   - 365-day price chart showing stablecoin price vs peg  
   - Stats including average deviation %, depeg incident count, depeg recovery speed  
-  - Alert if stablecoin is depegged (>1 month no recovery)
+  - Alert if stablecoin is depegged (>1 month no recovery)  
   - **Fixed mathematical consistency** between average and maximum deviation calculations
 
 - **Audit Section:**  
   - List all audits within 6 months  
   - Show audit firm, date, number and summary of outstanding issues, number and summary of critical/high issues, resolution status  
-  - Highlight top-tier firms (e.g., Deloitte, Chainlink PoR) as trust signals
+  - Highlight top-tier firms (e.g., Deloitte, Chainlink PoR) as trust signals  
   - **Removed individual audit scores** - shows only overall audit coverage score
   - **2-column responsive grid layout**
 

@@ -4,53 +4,160 @@
 # Dependencies: 5
 # Priority: high
 # Description: Improve data not found handling and optimize loading speeds for better user experience
-# Details:
-1. Replace 0 scores with proper "Data Not Found" indicators when data is unavailable
-2. Implement faster loading strategies for each component tier
-3. Add proper fallback states and error handling
-4. Optimize API call patterns and caching strategies
-5. Implement progressive data loading with better UX feedback
 
-# Test Strategy:
-Test data not found scenarios, measure loading performance improvements, validate fallback states work correctly
+## 🔍 **Analysis Results**
 
-# Subtasks:
-## 1. Data Not Found UI States [pending]
-### Dependencies: None
-### Description: Replace 0 scores with proper "Data Not Found" indicators
-### Details:
-- Replace misleading 0 scores with clear "Data Not Found" or "Unrated" indicators
-- Add visual distinction between actual 0 scores and missing data
-- Implement proper fallback UI components for each section
-- Add tooltips explaining why data might be unavailable
+### **Current Performance Issues:**
+- **Known Stablecoins (USDT, USDC)**: 5-10 seconds loading time
+- **Unknown Stablecoins (FRAX, new tokens)**: 10-18 seconds loading time
+- **Major Bottleneck**: Transparency discovery timeout (5-8 seconds)
+- **Critical Issue**: 0 scores mislead users (implies "terrible" not "unknown")
 
-## 2. Component Loading Speed Optimization [pending]
-### Dependencies: None
-### Description: Optimize loading speeds for each component tier
-### Details:
-- Analyze current loading bottlenecks in each tier
-- Implement component-level caching strategies
-- Add preloading for critical data points
-- Optimize API call sequencing and parallelization
-- Reduce time-to-first-paint for each section
+### **Key Findings:**
+1. **Data Not Found = 0 Score Problem**
+   - Line 444: `complete_risk_scores: { overall: 0, peg_stability: 0, transparency: 0, liquidity: 0, audit: 0 }`
+   - Line 877: `return { score: 0, details: { error: 'Failed to fetch liquidity data' } };`
+   - Users can't distinguish "bad data" vs "no data"
 
-## 3. Enhanced Error Handling & Fallbacks [pending]
-### Dependencies: None
-### Description: Implement comprehensive error handling and fallback states
-### Details:
-- Add proper error boundaries for each component
-- Implement retry mechanisms for failed API calls
-- Create graceful degradation when partial data is available
-- Add user-friendly error messages with actionable suggestions
-- Log errors for monitoring and debugging
+2. **Performance Bottlenecks:**
+   - Sequential API calls instead of parallel execution
+   - No caching layer (every request hits external APIs)
+   - Heavy transparency discovery with 5-8s timeout
+   - Missing progressive loading (users wait for all data)
 
-## 4. Progressive Loading UX Improvements [pending]
-### Dependencies: None
-### Description: Enhance progressive data loading user experience
-### Details:
-- Improve skeleton loading states with more accurate placeholders
-- Add progress indicators showing data fetching status
-- Implement smoother transitions between loading and loaded states
-- Add contextual loading messages explaining what's happening
-- Optimize loading animation performance
+## 📋 **Implementation Plan**
+
+### **Phase 1: Data Not Found Handling (Week 1)**
+
+#### Subtask 6.1: Create Data State Types [pending]
+- **Description**: Replace 0 scores with proper state indicators
+- **Implementation**:
+  ```typescript
+  type ScoreState = 
+    | { status: 'calculated', score: number }
+    | { status: 'not_available', reason: string }
+    | { status: 'insufficient_data' }
+  ```
+- **Files to modify**:
+  - `src/lib/types.ts` - Add new data state types
+  - `src/lib/services/stablecoin-data.ts` - Replace 0 score assignments
+  - `src/components/risk-score-meter.tsx` - Handle new states in UI
+
+#### Subtask 6.2: Update Risk Assessment Logic [pending]
+- **Description**: Replace all `score: 0` assignments with proper states
+- **Key Changes**:
+  - Line 444: Use `{ status: 'not_available', reason: 'API error' }`
+  - Line 877: Return proper error state instead of 0 score
+  - Add fallback scoring (50 for unknown, null for unavailable)
+- **Files to modify**:
+  - `src/lib/services/stablecoin-data.ts`
+  - `src/lib/services/transparency.ts`
+
+#### Subtask 6.3: Update UI Components [pending]
+- **Description**: Show "Data Not Found" instead of misleading 0 scores
+- **Components to update**:
+  - `RiskScoreMeter` - Show "Data Not Found" state
+  - `RiskSummaryCards` - Handle unavailable data gracefully
+  - `MainSummaryCard` - Display data availability status
+- **Expected Result**: Users see clear "Data Not Found" instead of 0 scores
+
+### **Phase 2: Performance Optimization (Week 2)**
+
+#### Subtask 6.4: Implement Caching Layer [pending]
+- **Description**: Add Redis/Memory cache with different TTLs
+- **Cache Strategy**:
+  ```typescript
+  const CACHE_CONFIG = {
+    BASIC_INFO: 24 * 60 * 60, // 24 hours
+    PRICE_HISTORY: 1 * 60 * 60, // 1 hour  
+    TRANSPARENCY: 12 * 60 * 60, // 12 hours
+    AUDITS: 7 * 24 * 60 * 60, // 7 days
+  }
+  ```
+- **Expected Improvement**: 80%+ cache hit rate, 90% faster for cached data
+
+#### Subtask 6.5: Optimize Transparency Discovery [pending]
+- **Description**: Reduce 5-8s timeout to 2s with background processing
+- **Implementation**:
+  - Check cache first (0.1s)
+  - Quick HEAD request (0.5s)
+  - Fallback to background job for full discovery
+  - Return "Discovery in Progress" state
+- **Expected Improvement**: 5-8s → 0.5-2s for unknown stablecoins
+
+#### Subtask 6.6: Implement Progressive Loading [pending]
+- **Description**: Stream data as it becomes available
+- **Tiers**:
+  - Tier 1: Basic info (1-2s)
+  - Tier 2: Price analysis (2-3s)
+  - Tier 3: Full assessment (3-5s)
+- **UI Updates**: Show skeleton → basic info → full data
+- **Expected Result**: Users see data within 2 seconds
+
+#### Subtask 6.7: Parallel API Optimization [pending]
+- **Description**: Execute API calls in parallel instead of sequential
+- **Current**: Sequential calls take 4-7 seconds
+- **Proposed**: Parallel calls take 2-3 seconds
+- **Implementation**: Use `Promise.allSettled()` for maximum parallelization
+
+### **Phase 3: Advanced Features (Week 3)**
+
+#### Subtask 6.8: Background Processing [pending]
+- **Description**: Move heavy operations to background jobs
+- **Features**:
+  - Pre-compute risk scores for popular stablecoins
+  - Background transparency discovery
+  - Webhook-based data updates
+
+#### Subtask 6.9: Performance Monitoring [pending]
+- **Description**: Add metrics and monitoring for loading performance
+- **Metrics**:
+  - Time to first content
+  - Cache hit rates
+  - API error rates
+  - User bounce rates due to loading
+
+## 🎯 **Success Criteria**
+
+### **Performance Targets:**
+- **Known Stablecoins**: 5-10s → 1-3s (70-80% improvement)
+- **Unknown Stablecoins**: 10-18s → 3-6s (60-70% improvement)
+- **Time to First Content**: < 2 seconds
+- **Cache Hit Rate**: > 80%
+
+### **User Experience Targets:**
+- **Zero 0 Scores**: 0% users see misleading 0 scores
+- **Data Clarity**: 100% clear distinction between "no data" vs "bad data"
+- **Progressive Loading**: Users see meaningful data within 2 seconds
+- **Error Handling**: Graceful degradation for API failures
+
+## 🧪 **Testing Strategy**
+
+### **Performance Testing:**
+```bash
+# Test loading times for both scenarios
+npm run test:performance
+
+# Specific tests:
+- Known stablecoin (USDT): Target < 2s
+- Unknown stablecoin (FRAX): Target < 5s
+- Data not found (INVALID): Target < 1s
+- Error scenarios: Target < 3s
+```
+
+### **Data Accuracy Testing:**
+- Verify "Data Not Found" appears correctly
+- Test fallback scoring mechanisms
+- Validate progressive loading states
+- Check cache invalidation logic
+
+## 📊 **Expected Impact**
+
+- **70%+ reduction** in loading times for known stablecoins
+- **60%+ reduction** in loading times for unknown stablecoins
+- **100% elimination** of misleading 0 scores
+- **80%+ cache hit rate** for repeat requests
+- **Sub-2 second** time to first meaningful content
+
+*See `LOADING_PERFORMANCE_ANALYSIS.md` for detailed technical analysis and implementation guidelines.*
 
