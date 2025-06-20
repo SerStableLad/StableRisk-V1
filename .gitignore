@@ -62,11 +62,9 @@ logs
 # Tailwind
 .tailwindcache
 
-# Test files
-test-*.js
-test-*.md
-*.test.js
-*.test.ts
+# Test files (only ignore root-level test files, not those in src/test/)
+/test-*.js
+/test-*.md
 
 # Configuration files with sensitive data
 src/lib/config.ts
