@@ -52,7 +52,7 @@ interface TransparencySectionProps {
 // Generate mock data for development
 function generateMockData(ticker: string): TransparencyData {
   const providerData: Record<string, Partial<TransparencyData>> = {
-    'USDT': {
+    'USDT0': {
       dashboard_url: 'https://wallet.tether.to/transparency',
       has_proof_of_reserves: true,
       proof_of_reserves_score: 85,
@@ -355,7 +355,17 @@ export function TransparencySection({ ticker, data: propData }: TransparencySect
         </CardContent>
       </Card>
 
-      {/* Reserve Composition */}
+      {/* Reserve Composition - HIDDEN FOR NOW */}
+      {/* 
+      FUTURE IMPLEMENTATION: Reserve Composition Data (Phase 5 - Future Enhancements)
+      See PRD.md and TECH_ARCHITECTURE.md for implementation roadmap.
+      
+      TODO: Real reserve composition data integration:
+      - Connect to official issuer APIs
+      - Parse regulatory filings and attestation reports  
+      - Add fallback to manual data entry
+      - Implement daily/weekly update frequency
+      
       {data.reserve_composition && (
         <Card>
           <CardHeader>
@@ -399,6 +409,7 @@ export function TransparencySection({ ticker, data: propData }: TransparencySect
           </CardContent>
         </Card>
       )}
+      */}
     </div>
   )
-} 
+}
