@@ -362,108 +362,79 @@ export const STABLECOIN_TRANSPARENCY_MAPPING: Record<string, StablecoinMappingEn
     audit_folder_url: 'https://docs.inverse.finance/inverse-finance/technical/audits',
     lastVerified: '2025-01-25'
   },
-
-  /*
-  'HUSD': {
-    symbol: 'HUSD',
-    name: 'HUSD',
+  'RUSD': {
+    symbol: 'RUSD',
+    name: 'Reservoir rUSD',
     transparency: {
-      dashboard_url: '',
-      attestation_provider: '',
+      dashboard_url: 'https://app.reservoir.xyz/reserves',
+      attestation_provider: 'Unknown', // Needs manual verification
       update_frequency: 'unknown',
-      has_proof_of_reserves: false,
-      verification_status: 'unknown'
+      has_proof_of_reserves: true,
+      verification_status: 'unverified'
     },
-    audit_folder_url: '',
-    lastVerified: '2025-01-25'
-  },
-
-  'FLEXUSD': {
-    symbol: 'FLEXUSD',
-    name: 'flexUSD',
-    transparency: {
-      dashboard_url: '',
-      attestation_provider: '',
-      update_frequency: 'unknown',
-      has_proof_of_reserves: false,
-      verification_status: 'unknown'
-    },
-    audit_folder_url: '',
-    lastVerified: '2025-01-25'
+    lastVerified: '2025-01-26'
   },
 
   'DEUSD': {
     symbol: 'DEUSD',
     name: 'Elixir deUSD',
     transparency: {
-      dashboard_url: '',
+      dashboard_url: 'https://www.elixir.xyz/deusd/dashboard',
       attestation_provider: '',
       update_frequency: 'unknown',
       has_proof_of_reserves: false,
       verification_status: 'unknown'
     },
-    audit_folder_url: '',
+    audit_folder_url: 'https://docs.elixir.xyz/audit',
     lastVerified: '2025-01-25'
   },
 
-  'CSUSDL': {
-    symbol: 'CSUSDL',
-    name: 'Coinshift',
-    transparency: {
-      dashboard_url: '',
-      attestation_provider: '',
-      update_frequency: 'unknown',
-      has_proof_of_reserves: false,
-      verification_status: 'unknown'
-    },
-    audit_folder_url: '',
-    lastVerified: '2025-01-25'
-  },
 
   'CRVUSD': {
     symbol: 'CRVUSD',
     name: 'crvUSD',
     transparency: {
-      dashboard_url: 'https://crvusd.curve.fi/',
-      attestation_provider: 'On-chain verification',
-      update_frequency: 'real-time',
-      has_proof_of_reserves: true,
-      verification_status: 'verified'
+      dashboard_url: '',
+      attestation_provider: '',
+      update_frequency: 'unknown',
+      has_proof_of_reserves: false,
+      verification_status: 'unknown'
     },
-    audit_folder_url: 'https://docs.curve.fi/crvUSD/security/',
+    audit_folder_url: 'https://github.com/curvefi/security-incident-reports/tree/main/audits/crvusd',
     lastVerified: '2025-01-25'
   },
-
 
 
   'USDZ': {
     symbol: 'USDZ',
     name: 'Anzen USDz',
     transparency: {
-      dashboard_url: '',
+      dashboard_url: 'https://app.anzen.finance/transparency',
       attestation_provider: '',
       update_frequency: 'unknown',
-      has_proof_of_reserves: false,
-      verification_status: 'unknown'
+      has_proof_of_reserves: true,
+      verification_status: 'verified'
     },
-    audit_folder_url: '',
+    audit_folder_url: 'https://github.com/Anzen-Finance/audits',
     lastVerified: '2025-01-25'
   },
 
+  
   'LVLUSD': {
     symbol: 'LVLUSD',
     name: 'Level USD',
     transparency: {
-      dashboard_url: '',
-      attestation_provider: '',
+      dashboard_url: 'https://app.level.money/transparency',
+      attestation_provider: 'self-attestation',
       update_frequency: 'unknown',
-      has_proof_of_reserves: false,
-      verification_status: 'unknown'
+      has_proof_of_reserves: true,
+      verification_status: 'verified'
     },
-    audit_folder_url: '',
+    audit_folder_url: 'https://level-money.gitbook.io/docs/technical-documentation/audits',
     lastVerified: '2025-01-25'
   },
 
+  /*
   'REUSD': {
     symbol: 'REUSD',
     name: 'Resupply USD',

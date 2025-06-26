@@ -36,20 +36,25 @@ export class StablecoinDataService {
       return true
     }
     
-    // 2. CoinGecko Categories Second - must have exactly "usd-stablecoin" category
-    const hasStablecoinCategory = categories?.includes('usd-stablecoin') || false
+    // 2. CoinGecko Categories Second - flexible matching for USD stablecoin categories
+    // Handle CoinGecko's inconsistent category naming: "usd-stablecoin", "USD Stablecoin", "usd stablecoin", etc.
+    const hasStablecoinCategory = categories?.some(category => {
+      const normalizedCategory = category.toLowerCase().replace(/[\s-_]/g, '')
+      return normalizedCategory === 'usdstablecoin' || normalizedCategory === 'stablecoins'
+    }) || false
+    
     if (hasStablecoinCategory) {
       // Additional price validation to catch CoinGecko categorization errors
       if (currentPrice && (currentPrice < 0.50 || currentPrice > 1.50)) {
-        console.log(`[VALIDATION] ❌ ${symbol} rejected - has "usd-stablecoin" category but price=${currentPrice} is not stablecoin-like`)
+        console.log(`[VALIDATION] ❌ ${symbol} rejected - has USD stablecoin category but price=${currentPrice} is not stablecoin-like`)
         return false
       }
-      console.log(`[VALIDATION] ✅ ${symbol} accepted - has "usd-stablecoin" category and reasonable price=${currentPrice}`)
+      console.log(`[VALIDATION] ✅ ${symbol} accepted - has USD stablecoin category and reasonable price=${currentPrice}`)
       return true
     }
     
     // 3. Reject everything else (no keyword fallback)
-    console.log(`[VALIDATION] ❌ ${symbol} rejected - not in mapping table and missing "usd-stablecoin" category`)
+    console.log(`[VALIDATION] ❌ ${symbol} rejected - not in mapping table and missing USD stablecoin category`)
     console.log(`[VALIDATION] Available categories:`, categories || [])
     return false
   }
