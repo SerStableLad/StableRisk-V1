@@ -1,7 +1,7 @@
 import { createApiClient } from './api-client'
 import { config, endpoints } from '@/lib/config'
 import { StablecoinInfo, PricePoint } from '@/lib/types'
-import { getKnownGenesisDate } from './stablecoin-mapping-table'
+import { getKnownGenesisDate } from './stablecoin-mapping-utils'
 
 // CoinGecko API response interfaces
 interface CoinGeckoApiResponse {
@@ -30,6 +30,7 @@ interface CoinGeckoApiResponse {
   description: {
     en: string
   }
+  categories: string[] // CoinGecko categories (e.g., ["usd-stablecoin"])
   links: {
     homepage: string[]
     blockchain_site: string[]
@@ -44,6 +45,9 @@ interface CoinGeckoApiResponse {
       bitbucket: string[]
     }
   }
+  // Phase 1 optimization: Include platform data in response
+  platforms?: Record<string, string>
+  contract_address?: string
 }
 
 interface CoinGeckoHistoryResponse {
@@ -67,7 +71,58 @@ interface CoinGeckoSimplePriceResponse {
   }
 }
 
+interface CoinGeckoTickersResponse {
+  name: string
+  tickers: Array<{
+    base: string
+    target: string
+    market: {
+      name: string
+      identifier: string
+      has_trading_incentive: boolean
+    }
+    last: number
+    volume: number
+    converted_last: {
+      btc: number
+      eth: number
+      usd: number
+    }
+    converted_volume: {
+      btc: number
+      eth: number
+      usd: number
+    }
+    trust_score: string
+    bid_ask_spread_percentage: number
+    timestamp: string
+    last_traded_at: string
+    last_fetch_at: string
+    is_anomaly: boolean
+    is_stale: boolean
+    trade_url: string
+    token_info_url: string | null
+    coin_id: string
+    target_coin_id: string
+  }>
+}
 
+interface ExchangeVolumeData {
+  totalCexVolume: number
+  totalDexVolume: number
+  cexPercentage: number
+  dexPercentage: number
+  topCexExchanges: Array<{
+    name: string
+    volume: number
+    percentage: number
+  }>
+  topDexExchanges: Array<{
+    name: string
+    volume: number
+    percentage: number
+  }>
+}
 
 export class CoinGeckoService {
   private client: ReturnType<typeof createApiClient>
@@ -100,15 +155,31 @@ export class CoinGeckoService {
       console.log(`[CoinGecko] Search response status: Success`)
       console.log(`[CoinGecko] Found ${response.coins?.length || 0} coins`)
 
-      // Find exact match by symbol
-      const coin = response.coins?.find((c: any) => 
+      // Find exact matches by symbol
+      const matchingCoins = response.coins?.filter((c: any) => 
         c.symbol?.toLowerCase() === ticker.toLowerCase()
-      )
+      ) || []
 
-      if (!coin) {
+      if (matchingCoins.length === 0) {
         console.warn(`[CoinGecko] No exact match found for ${ticker}`)
         console.log(`[CoinGecko] Available coins:`, response.coins?.map((c: any) => ({ id: c.id, symbol: c.symbol })))
         return null
+      }
+
+      // If multiple matches, prioritize by market cap rank (lower rank = higher market cap)
+      let coin = matchingCoins[0]
+      if (matchingCoins.length > 1) {
+        console.log(`[CoinGecko] Found ${matchingCoins.length} matches for ${ticker}:`, 
+          matchingCoins.map((c: any) => ({ id: c.id, name: c.name, rank: c.market_cap_rank })))
+        
+        // Sort by market cap rank (nulls go to end)
+        coin = matchingCoins.sort((a: any, b: any) => {
+          if (a.market_cap_rank === null) return 1
+          if (b.market_cap_rank === null) return -1
+          return a.market_cap_rank - b.market_cap_rank
+        })[0]
+        
+        console.log(`[CoinGecko] Selected highest ranked match: ${coin.id} (rank: ${coin.market_cap_rank})`)
       }
 
       console.log(`[CoinGecko] Found CoinGecko ID for ${ticker}: ${coin.id}`)
@@ -163,6 +234,7 @@ export class CoinGeckoService {
         genesis_date: genesisDate,
         blockchain: blockchains,
         pegging_type: pegType,
+        categories: data.categories || [], // Include CoinGecko categories for validation
         // Include official links from CoinGecko
         official_links: {
           homepage: data.links?.homepage?.filter(url => url && url.trim() !== '') || [],
@@ -171,7 +243,10 @@ export class CoinGeckoService {
           github_repos: data.links?.repos_url?.github?.filter(url => 
             url && url.trim() !== ''
           ) || []
-        }
+        },
+        // Phase 1 optimization: Include platform data to eliminate redundant API calls
+        platforms: data.platforms || {},
+        contract_address: data.contract_address || (data.platforms?.ethereum ? data.platforms.ethereum : undefined)
       }
     } catch (error) {
       console.error('CoinGecko coin info error:', {
@@ -439,7 +514,7 @@ export class CoinGeckoService {
   }
 
   /**
-   * Get token contract addresses
+   * Get token data including platforms/contracts
    */
   async getTokenData(coinId: string): Promise<{
     contract_address?: string
@@ -447,7 +522,7 @@ export class CoinGeckoService {
   } | null> {
     try {
       const data = await this.client.get<any>(
-        `/coins/${coinId}`,
+        endpoints.coingecko.coinData(coinId),
         {
           params: {
             localization: 'false',
@@ -460,24 +535,124 @@ export class CoinGeckoService {
         }
       )
 
-      // Get the first available contract address
-      const platforms = data.platforms || {}
-      const firstPlatform = Object.keys(platforms)[0]
-      const contract_address = firstPlatform ? platforms[firstPlatform] : undefined
-
       return {
-        contract_address,
-        platforms
+        contract_address: data.contract_address,
+        platforms: data.platforms || {}
       }
     } catch (error) {
-      console.error('CoinGecko token data error:', {
-        coinId,
-        error: error instanceof Error ? {
-          name: error.name,
-          message: error.message
-        } : error,
-        errorString: String(error)
-      })
+      console.error('CoinGecko token data error:', error)
+      return null
+    }
+  }
+
+  /**
+   * Get exchange tickers data to analyze CEX vs DEX volume distribution
+   */
+  async getExchangeTickers(coinId: string): Promise<ExchangeVolumeData | null> {
+    try {
+      console.log(`[CoinGecko] Fetching tickers for ${coinId}`)
+      
+      const data = await this.client.get<CoinGeckoTickersResponse>(
+        `/coins/${coinId}/tickers`,
+        {
+          params: {
+            include_exchange_logo: 'false',
+            page: 1,
+            order: 'volume_desc'
+          }
+        }
+      )
+
+      console.log(`[CoinGecko] Found ${data.tickers?.length || 0} trading pairs`)
+
+      if (!data.tickers || data.tickers.length === 0) {
+        return null
+      }
+
+      // Known DEX identifiers - exchanges that are decentralized
+      const dexIdentifiers = new Set([
+        'uniswap-v2', 'uniswap-v3', 'sushiswap', 'pancakeswap-v2', 'pancakeswap-v3',
+        'curve', 'balancer', 'orca', 'raydium', 'jupiter', 'dydx',
+        'trader-joe', 'quickswap', 'spookyswap', 'spiritswap', 'honeyswap',
+        'bancor', 'kyber', 'mooniswap', 'dodo', 'mdex', 'biswap',
+        'apeswap', 'bakeryswap', 'camelot', 'ramses', 'velodrome',
+        'aerodrome', 'solidly', 'thena', 'alienbase', 'baseswap'
+      ])
+
+      let totalCexVolume = 0
+      let totalDexVolume = 0
+      const cexExchanges = new Map<string, number>()
+      const dexExchanges = new Map<string, number>()
+
+      // Process each ticker to categorize and sum volumes
+      for (const ticker of data.tickers) {
+        // Skip anomalous or stale data
+        if (ticker.is_anomaly || ticker.is_stale) {
+          continue
+        }
+
+        const volume = ticker.converted_volume?.usd || 0
+        const exchangeName = ticker.market.name
+        const exchangeId = ticker.market.identifier
+
+        // Determine if this is a DEX or CEX
+        const isDex = dexIdentifiers.has(exchangeId.toLowerCase()) || 
+                      exchangeName.toLowerCase().includes('uniswap') ||
+                      exchangeName.toLowerCase().includes('pancakeswap') ||
+                      exchangeName.toLowerCase().includes('curve') ||
+                      exchangeName.toLowerCase().includes('sushiswap')
+
+        if (isDex) {
+          totalDexVolume += volume
+          dexExchanges.set(exchangeName, (dexExchanges.get(exchangeName) || 0) + volume)
+        } else {
+          totalCexVolume += volume
+          cexExchanges.set(exchangeName, (cexExchanges.get(exchangeName) || 0) + volume)
+        }
+      }
+
+      const totalVolume = totalCexVolume + totalDexVolume
+
+      if (totalVolume === 0) {
+        return null
+      }
+
+      // Calculate percentages
+      const cexPercentage = (totalCexVolume / totalVolume) * 100
+      const dexPercentage = (totalDexVolume / totalVolume) * 100
+
+      // Get top exchanges
+      const topCexExchanges = Array.from(cexExchanges.entries())
+        .sort(([,a], [,b]) => b - a)
+        .slice(0, 5)
+        .map(([name, volume]) => ({
+          name,
+          volume,
+          percentage: (volume / totalVolume) * 100
+        }))
+
+      const topDexExchanges = Array.from(dexExchanges.entries())
+        .sort(([,a], [,b]) => b - a)
+        .slice(0, 5)
+        .map(([name, volume]) => ({
+          name,
+          volume,
+          percentage: (volume / totalVolume) * 100
+        }))
+
+      console.log(`[CoinGecko] Volume distribution - CEX: ${cexPercentage.toFixed(1)}%, DEX: ${dexPercentage.toFixed(1)}%`)
+
+      return {
+        totalCexVolume,
+        totalDexVolume,
+        cexPercentage,
+        dexPercentage,
+        topCexExchanges,
+        topDexExchanges
+      }
+
+    } catch (error) {
+      console.error(`[CoinGecko] Exchange tickers error for ${coinId}:`, error)
       return null
     }
   }

@@ -169,3 +169,113 @@ npm run test:performance
 
 *See `LOADING_PERFORMANCE_ANALYSIS.md` for detailed technical analysis and implementation guidelines.*
 
+### **Phase 4: Dynamic Reserve Composition Retrieval (Week 4)**
+
+#### Subtask 6.10: Reserve Composition Data Enhancement [pending]
+- **Status**: 🔄 **PENDING** - Implementation plan defined
+- **Description**: Replace hardcoded reserve composition with dynamic scraping from transparency dashboards
+- **Current Issue**: All stablecoins show identical fake reserve composition data (85% cash, 10% treasury bills, 5% other)
+
+#### **Implementation Plan:**
+
+##### **Step 1: Content Type Detection & Routing**
+```typescript
+async detectContentType(url: string): Promise<'pdf' | 'dashboard' | 'unknown'> {
+  // Pre-flight check using HEAD request
+  // Route to appropriate extraction method
+}
+```
+
+##### **Step 2: Dashboard Scraping (Primary Method)**
+- **Use Existing Playwright Infrastructure**: Leverage `PlaywrightScraperService` already implemented
+- **Target Dashboards**:
+  - **USDC**: `circle.com/transparency` - reserve breakdown charts
+  - **USDT**: `tether.to/transparency` - composition percentages  
+  - **FDUSD**: `firstdigitallabs.com/transparency` - detailed breakdowns
+  - **USDE**: `app.ethena.fi/dashboards/transparency` - real-time backing
+  - **USD0**: `app.rwa.xyz/assets/USD0` - live composition
+
+##### **Step 3: PDF Processing (Secondary Method)**
+- **PDF Text Extraction**: Use pdf-parse for attestation reports
+- **Pattern Matching**: Regex patterns for common reserve terminology
+- **Examples**: "Cash and cash equivalents: 85%", "U.S. Treasury Bills: 10%"
+
+##### **Step 4: Overcollateralization Detection**
+- **Direct Statements**: Look for "overcollateralized by X%" text
+- **Ratio Calculation**: Parse total reserves vs circulating supply
+- **Confidence Scoring**: High/Medium/Low based on data source quality
+
+##### **Step 5: Error Handling & Graceful Degradation**
+```typescript
+interface ReserveCompositionResult {
+  success: boolean
+  data?: ReserveComposition
+  error?: string
+  source?: 'dashboard' | 'pdf' | 'fallback'
+  confidence?: 'high' | 'medium' | 'low'
+}
+
+// UI Fallback Display
+if (!reserveResult.success) {
+  return (
+    <div className="text-center py-4">
+      <p className="text-muted-foreground">Unable to retrieve reserve composition data</p>
+      <p className="text-sm text-muted-foreground">
+        {reserveResult.error || 'Data not available from transparency sources'}
+      </p>
+    </div>
+  )
+}
+```
+
+##### **Step 6: Performance Optimization**
+- **24-Hour Caching**: Reserve data changes infrequently
+- **Background Updates**: Refresh data without user waiting
+- **Selective Implementation**: Priority stablecoins first (USDT, USDC, USDE, FDUSD)
+- **Parallel Processing**: Run alongside existing transparency analysis
+
+#### **Performance Impact Analysis:**
+- **Current Load Time**: ~2-3 seconds per stablecoin
+- **With Reserve Composition**: ~4-7 seconds per stablecoin (first load)
+- **Cached Loads**: ~50-100ms (24-hour cache)
+- **Background Updates**: User sees instant cached data
+
+#### **Load Time Breakdown:**
+1. **Basic API data**: 200-500ms
+2. **Transparency analysis**: 2000-3000ms (existing)
+3. **Reserve composition**: +2000-4000ms (new)
+4. **Total**: 4200-7500ms first load, ~100ms cached
+
+#### **Mitigation Strategies:**
+1. **Selective Implementation**: Only run for stablecoins with known transparency URLs
+2. **Progressive Loading**: Show basic data first, reserve composition loads separately
+3. **Background Processing**: Queue system for non-critical data
+4. **Smart Caching**: Different TTL for different data types
+
+#### **Success Criteria:**
+- **Data Accuracy**: 90%+ accuracy for major stablecoins (USDT, USDC, USDE, FDUSD)
+- **Performance**: <5s additional load time for first request
+- **User Experience**: Clear "Unable to retrieve" messages instead of fake data
+- **Overcollateralization**: Detect and display ratio for applicable stablecoins
+- **Cache Hit Rate**: >80% for repeat requests (24-hour TTL)
+
+#### **Implementation Timeline:**
+- **Day 1**: Content type detection & routing logic
+- **Day 2**: Dashboard scraping extractors for major stablecoins
+- **Day 3**: PDF processing & pattern matching
+- **Day 4**: Overcollateralization detection & UI integration
+- **Day 5**: Testing, optimization, error handling
+
+#### **Testing Strategy:**
+```bash
+# Test reserve composition extraction
+npm run test:reserve-composition
+
+# Specific tests:
+- USDT: Extract from Tether transparency page
+- USDC: Extract from Circle dashboard
+- USDE: Extract from Ethena transparency
+- Unknown stablecoin: Graceful "Unable to retrieve" display
+- PDF reports: Pattern matching accuracy
+```
+

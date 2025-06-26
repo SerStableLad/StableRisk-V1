@@ -102,14 +102,20 @@ export class ApiClient {
         if (
           error instanceof Error && 
           (error.name === 'AbortError' || 
-           error.message.includes('4')) // 4xx errors shouldn't be retried
+           (error.message.includes('HTTP 4') && !error.message.includes('HTTP 429'))) // Allow 429 retries
         ) {
           console.log(`[ApiClient] Not retrying due to error type: ${error.name}`)
           break
         }
 
-        // Wait before retry (exponential backoff)
-        if (attempt < retries) {
+        // Special handling for 429 rate limit errors
+        if (error instanceof Error && error.message.includes('HTTP 429')) {
+          const retryAfter = 30 // Default 30 seconds, could be parsed from headers
+          const waitTime = Math.max(retryAfter * 1000, 1000 * Math.pow(2, attempt))
+          console.log(`[ApiClient] Rate limited (429). Waiting ${waitTime}ms before retry...`)
+          await new Promise(resolve => setTimeout(resolve, waitTime))
+        } else if (attempt < retries) {
+          // Regular exponential backoff for other errors
           const waitTime = 1000 * Math.pow(2, attempt)
           console.log(`[ApiClient] Waiting ${waitTime}ms before retry...`)
           await new Promise(resolve => setTimeout(resolve, waitTime))

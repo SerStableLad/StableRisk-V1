@@ -64,7 +64,7 @@ interface AuditSectionProps {
 // Generate mock data for development
 function generateMockData(ticker: string): AuditData {
   const auditData: Record<string, Partial<AuditData>> = {
-    'USDT': {
+    'USDT0': {
       recent_audits: [
         {
           firm_name: 'Moore Cayman',

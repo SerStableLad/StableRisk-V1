@@ -184,7 +184,7 @@ function runLiquiditySectionTests() {
   ]
   
   let passed = 0
-  let total = tests.length
+  const total = tests.length
   
   tests.forEach((test, index) => {
     try {

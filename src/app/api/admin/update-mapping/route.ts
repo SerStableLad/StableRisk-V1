@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { STABLECOIN_TRANSPARENCY_MAPPING, updateMappingWithDiscoveredData } from '@/lib/services/stablecoin-mapping-table'
+import { updateMappingWithDiscoveredData } from '@/lib/services/stablecoin-mapping-utils'
+import { STABLECOIN_TRANSPARENCY_MAPPING } from '@/lib/services/stablecoin-mapping-table'
 
 // Simple authentication - in production, use proper auth
 const ADMIN_SECRET = process.env.ADMIN_SECRET || 'your-secret-key'

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { coinGeckoService } from '@/lib/services/coingecko'
-import { cache, cacheKeys } from '@/lib/cache'
+import { cacheService, cacheKeys } from '@/lib/cache'
 import { checkRateLimit } from '@/lib/rate-limit'
 import { ApiResponse, SearchResponse } from '@/lib/types'
 
@@ -49,15 +49,15 @@ export async function GET(request: NextRequest) {
 
     // Check cache first
     const cacheKey = cacheKeys.coinGeckoSearch(cleanQuery)
-    let coinId = cache.get<string | null>(cacheKey)
+    let coinId = await cacheService.get<string | null>(cacheKey)
 
-    if (coinId === undefined) {
+    if (coinId === null) {
       // Fetch from CoinGecko
       console.log(`Searching for ${cleanQuery}`)
       coinId = await coinGeckoService.searchStablecoin(cleanQuery)
       
       // Cache for 1 hour (searches can be cached for shorter time)
-      cache.set(cacheKey, coinId, 60 * 60 * 1000)
+      await cacheService.set(cacheKey, coinId, 60 * 60)
     } else {
       console.log(`Serving cached search result for ${cleanQuery}`)
     }

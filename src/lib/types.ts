@@ -10,6 +10,7 @@ export interface StablecoinInfo {
   blockchain?: string // Network/blockchain
   pegging_type: 'fiat-backed' | 'crypto-collateralized' | 'algorithmic' | 'commodity-backed'
   commodity?: string // For commodity-backed stablecoins
+  categories?: string[] // CoinGecko categories for validation
   // Official links from data providers like CoinGecko
   official_links?: {
     homepage: string[]
@@ -17,6 +18,9 @@ export interface StablecoinInfo {
     telegram_channel_identifier?: string
     github_repos?: string[]
   }
+  // Phase 1 optimization: Include platform data to eliminate redundant API calls
+  platforms?: Record<string, string> // blockchain platform -> contract address mapping
+  contract_address?: string // primary contract address (usually Ethereum)
 }
 
 // Risk assessment scores

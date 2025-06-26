@@ -4,7 +4,7 @@ import React from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, ReferenceArea, Brush } from 'recharts'
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, ReferenceArea, Brush, ComposedChart, Bar } from 'recharts'
 import { AlertTriangle, TrendingUp, TrendingDown, Activity } from 'lucide-react'
 
 interface PriceDataPoint {
@@ -51,7 +51,7 @@ function generateMockData(ticker: string): PegStabilityData {
   const now = new Date()
   
   // Define depeg periods based on actual events
-  const depegPeriods = ticker === 'USDT' ? [
+  const depegPeriods = ticker === 'USDT0' ? [
     { start: '2024-10-15', end: '2024-10-16' },
     { start: '2024-03-11', end: '2024-03-12' }
   ] : ticker === 'DAI' ? [
@@ -73,7 +73,7 @@ function generateMockData(ticker: string): PegStabilityData {
     
     if (isDepegPeriod) {
       // Simulate depeg events with more significant deviation
-      if (ticker === 'USDT') {
+      if (ticker === 'USDT0') {
         price = 0.985 + Math.random() * 0.02 // 1.5-3.5% below peg
       } else if (ticker === 'DAI') {
         price = 1.012 + Math.random() * 0.008 // 1.2-2.0% above peg
@@ -101,12 +101,12 @@ function generateMockData(ticker: string): PegStabilityData {
     price_history: priceHistory,
     statistics: {
       average_deviation_percent: avgDeviation * 100,
-      depeg_incidents_count: ticker === 'USDT' ? 2 : ticker === 'DAI' ? 1 : 0,
+      depeg_incidents_count: ticker === 'USDT0' ? 2 : ticker === 'DAI' ? 1 : 0,
       max_deviation_percent: maxDeviation * 100,
-      recovery_speed_hours: ticker === 'USDT' ? 12 : ticker === 'DAI' ? 6 : undefined,
+              recovery_speed_hours: ticker === 'USDT0' ? 12 : ticker === 'DAI' ? 6 : undefined,
       current_deviation_percent: currentDeviation * 100
     },
-    depeg_events: ticker === 'USDT' ? [
+          depeg_events: ticker === 'USDT0' ? [
       {
         start_date: '2024-10-15',
         end_date: '2024-10-16',
@@ -131,14 +131,31 @@ function generateMockData(ticker: string): PegStabilityData {
       }
     ] : [],
     is_currently_depegged: false,
-    days_since_depeg: ticker === 'USDT' ? 45 : undefined
+          days_since_depeg: ticker === 'USDT0' ? 45 : undefined
   }
 }
 
 // Custom tooltip for the chart
 const CustomTooltip = ({ active, payload, label }: any) => {
   if (active && payload && payload.length) {
-    const price = payload[0].value
+    // Debug logging to understand payload structure
+    if (process.env.NODE_ENV === 'development') {
+      console.log('Tooltip payload:', payload.map((p: any) => ({
+        dataKey: p.dataKey,
+        value: p.value,
+        name: p.name
+      })))
+    }
+    
+    // Find the price data in the payload (filter out background bar data)
+    const priceData = payload.find((entry: any) => entry.dataKey === 'price')
+    
+    if (!priceData) {
+      console.warn('No price data found in tooltip payload')
+      return null
+    }
+    
+    const price = priceData.value
     const deviation = ((price - 1.0) * 100).toFixed(3)
     const date = new Date(label).toLocaleDateString()
     
@@ -192,21 +209,145 @@ export function PegStabilitySection({ ticker, data: propData }: PegStabilitySect
   const currentPrice = data.price_history[data.price_history.length - 1]?.price || 1.0
   
   // Get depeg periods for reference areas
-  const getDepegPeriods = (): { start: string; end: string }[] => {
-    const periods: { start: string; end: string }[] = []
+  const getDepegPeriods = (): { start: number; end: number }[] => {
+    const periods: { start: number; end: number }[] = []
     
-    // Use the actual depeg events from the data
+    // Use the actual depeg events from the data if available
     data.depeg_events.forEach(event => {
-      periods.push({
-        start: event.start_date,
-        end: event.end_date || event.start_date
-      })
+      const startIndex = data.price_history.findIndex(p => p.date === event.start_date)
+      const endIndex = event.end_date 
+        ? data.price_history.findIndex(p => p.date === event.end_date)
+        : startIndex
+      
+      if (startIndex !== -1 && endIndex !== -1) {
+        periods.push({
+          start: startIndex,
+          end: endIndex
+        })
+      }
     })
+    
+    // If no depeg events are provided, analyze price history to detect depeg periods
+    if (periods.length === 0 && data.price_history.length > 0) {
+      const DEPEG_THRESHOLD = 0.01 // 1% deviation from $1.00
+      let depegStart: number | null = null
+      
+      data.price_history.forEach((point, index) => {
+        const isDepegged = Math.abs(point.price - 1.0) > DEPEG_THRESHOLD
+        
+        if (isDepegged && depegStart === null) {
+          // Start of depeg period
+          depegStart = index
+        } else if (!isDepegged && depegStart !== null) {
+          // End of depeg period
+          periods.push({
+            start: depegStart,
+            end: index - 1
+          })
+          depegStart = null
+        }
+      })
+      
+      // Handle case where depeg period extends to the end of data
+      if (depegStart !== null) {
+        periods.push({
+          start: depegStart,
+          end: data.price_history.length - 1
+        })
+      }
+    }
     
     return periods
   }
   
   const depegPeriods = getDepegPeriods()
+  
+  // Calculate detailed depeg incident stats
+  const getDepegIncidentDetails = () => {
+    return depegPeriods.map((period, index) => {
+      const startPoint = data.price_history[period.start]
+      const endPoint = data.price_history[period.end]
+      
+      // Find the maximum deviation during this period
+      let maxDeviation = 0
+      let maxDeviationPrice = startPoint.price
+      
+      for (let i = period.start; i <= period.end; i++) {
+        const point = data.price_history[i]
+        const deviation = Math.abs(point.price - 1.0)
+        if (deviation > maxDeviation) {
+          maxDeviation = deviation
+          maxDeviationPrice = point.price
+        }
+      }
+      
+      // Calculate duration
+      const startDate = new Date(startPoint.date)
+      const endDate = new Date(endPoint.date)
+      const durationMs = endDate.getTime() - startDate.getTime()
+      const durationHours = Math.ceil(durationMs / (1000 * 60 * 60)) // Round up to nearest hour
+      const durationDays = Math.ceil(durationMs / (1000 * 60 * 60 * 24)) // Round up to nearest day
+      
+      // For recovery time, we need to check if data granularity supports it
+      // Since we only have daily data, we can only estimate recovery time in days
+      const recoveryTimeEstimate = durationDays === 1 ? "< 24 hours" : `${durationDays} days`
+      
+      return {
+        id: index + 1,
+        startDate: startPoint.date,
+        endDate: endPoint.date,
+        startPrice: startPoint.price,
+        endPrice: endPoint.price,
+        maxDeviation: maxDeviation,
+        maxDeviationPrice: maxDeviationPrice,
+        deviationPercent: (maxDeviation * 100),
+        duration: {
+          days: durationDays,
+          hours: durationHours,
+          display: recoveryTimeEstimate
+        },
+        direction: maxDeviationPrice > 1.0 ? 'above' : 'below'
+      }
+    })
+  }
+  
+  const depegIncidents = getDepegIncidentDetails()
+  
+  // Enhance price history data with depeg indicators for chart rendering
+  const enhancedPriceHistory = data.price_history.map((point, index) => {
+    const isInDepegPeriod = depegPeriods.some(period => 
+      index >= period.start && index <= period.end
+    )
+    return {
+      ...point,
+      isDepeg: isInDepegPeriod,
+      depegBackground: isInDepegPeriod ? 1 : 0 // For bar chart overlay
+    }
+  })
+  
+  // Debug log to help verify depeg detection
+  if (process.env.NODE_ENV === 'development') {
+    console.log(`[${ticker}] Depeg periods detected:`, depegPeriods.length)
+    console.log(`[${ticker}] Depeg events from API:`, data.depeg_events.length)
+    console.log(`[${ticker}] Detailed depeg incidents:`, depegIncidents)
+    if (depegPeriods.length > 0) {
+      console.log(`[${ticker}] Depeg periods:`, depegPeriods.map(p => ({
+        start: data.price_history[p.start]?.date,
+        end: data.price_history[p.end]?.date,
+        startPrice: data.price_history[p.start]?.price,
+        endPrice: data.price_history[p.end]?.price
+      })))
+    }
+    console.log(`[${ticker}] Enhanced data points with depeg:`, enhancedPriceHistory.filter(p => p.isDepeg).length)
+    console.log(`[${ticker}] Data granularity check:`, {
+      totalDataPoints: data.price_history.length,
+      dateRange: {
+        first: data.price_history[0]?.date,
+        last: data.price_history[data.price_history.length - 1]?.date
+      },
+      hasTimestamps: data.price_history[0]?.timestamp !== undefined
+    })
+  }
   
   return (
     <div className="space-y-6">
@@ -244,9 +385,10 @@ export function PegStabilitySection({ ticker, data: propData }: PegStabilitySect
         <CardContent>
           <div className="h-80 w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart
-                data={data.price_history}
+              <ComposedChart
+                data={enhancedPriceHistory}
                 margin={{ top: 20, right: 30, left: 20, bottom: 70 }}
+                barCategoryGap={0}
               >
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis 
@@ -257,31 +399,33 @@ export function PegStabilitySection({ ticker, data: propData }: PegStabilitySect
                   height={60}
                 />
                 <YAxis 
+                  yAxisId="price"
                   domain={['dataMin - 0.01', 'dataMax + 0.01']}
                   tick={{ fontSize: 12 }}
                   tickFormatter={(value) => `$${value.toFixed(4)}`}
                 />
+                <YAxis 
+                  yAxisId="background"
+                  domain={[0, 1]}
+                  hide
+                />
                 <Tooltip content={<CustomTooltip />} />
                 
+                {/* Background bars for depeg periods */}
+                <Bar
+                  yAxisId="background"
+                  dataKey="depegBackground"
+                  fill="#7f1d1d"
+                  fillOpacity={0.8}
+                  stroke="none"
+                />
+                
                 {/* $1.00 reference line */}
-                <ReferenceLine y={1.0} stroke="#666" strokeDasharray="2 2" />
+                <ReferenceLine yAxisId="price" y={1.0} stroke="#666" strokeDasharray="2 2" />
                 
-                {/* Depeg period reference areas */}
-                {depegPeriods.map((period, index) => (
-                  <ReferenceArea
-                    key={index}
-                    x1={period.start}
-                    x2={period.end}
-                    fill="#dc2626"
-                    fillOpacity={0.3}
-                    stroke="#dc2626"
-                    strokeOpacity={0.8}
-                    strokeWidth={2}
-                  />
-                ))}
-                
-                {/* Price line - normal periods */}
+                {/* Price line */}
                 <Line
+                  yAxisId="price"
                   type="monotone"
                   dataKey="price"
                   stroke="#3b82f6"
@@ -289,23 +433,7 @@ export function PegStabilitySection({ ticker, data: propData }: PegStabilitySect
                   dot={false}
                   activeDot={{ r: 4, fill: '#3b82f6' }}
                 />
-                
-                {/* Brush component for zoom functionality */}
-                <Brush 
-                  dataKey="date"
-                  height={40}
-                  stroke="hsl(var(--border))"
-                  fill="hsl(var(--muted))"
-                  startIndex={Math.max(0, data.price_history.length - 90)} // Show last 90 days by default
-                  endIndex={data.price_history.length - 1}
-                  tickFormatter={(value) => {
-                    const date = new Date(value)
-                    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-                  }}
-                  travellerWidth={8}
-                  gap={2}
-                />
-              </LineChart>
+              </ComposedChart>
             </ResponsiveContainer>
           </div>
         </CardContent>
@@ -371,33 +499,99 @@ export function PegStabilitySection({ ticker, data: propData }: PegStabilitySect
         </Card>
       </div>
 
-      {/* Depeg Events History */}
-      {data.depeg_events.length > 0 && (
+      {/* Detailed Depeg Incidents Analysis */}
+      {depegIncidents.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle>Recent Depeg Events</CardTitle>
+            <CardTitle className="flex items-center space-x-2">
+              <AlertTriangle className="h-5 w-5 text-red-600" />
+              <span>Depeg Incidents Analysis ({depegIncidents.length} events)</span>
+            </CardTitle>
+            <div className="space-y-2 mt-2">
+              <p className="text-sm text-muted-foreground">
+                Detailed breakdown of when {ticker} deviated more than 1% from the $1.00 peg
+              </p>
+              <div className="bg-blue-50 dark:bg-blue-950 p-3 rounded-lg">
+                <p className="text-xs text-blue-700 dark:text-blue-300">
+                  📊 <strong>Data Granularity:</strong> Recovery times are calculated based on daily price data. 
+                  Actual recovery may have occurred faster than reported if intraday corrections happened.
+                </p>
+              </div>
+            </div>
           </CardHeader>
           <CardContent>
-            <div className="space-y-3">
-              {data.depeg_events.map((event, index) => (
-                <div key={index} className="flex items-center justify-between p-3 border rounded-lg">
-                  <div>
-                    <p className="font-medium">
-                      {new Date(event.start_date).toLocaleDateString()} 
-                      {event.end_date && ` - ${new Date(event.end_date).toLocaleDateString()}`}
-                    </p>
-                    <p className="text-sm text-muted-foreground">
-                      Max deviation: {event.max_deviation.toFixed(2)}% • Duration: {event.duration_days} days
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              {depegIncidents.map((incident) => (
+                <div key={incident.id} className="border rounded-lg p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h4 className="font-semibold text-lg">Incident #{incident.id}</h4>
+                    <Badge variant={incident.direction === 'above' ? 'default' : 'destructive'}>
+                      {incident.direction === 'above' ? 'Above Peg' : 'Below Peg'}
+                    </Badge>
+                  </div>
+                  
+                  <div className="grid grid-cols-3 gap-3">
+                    {/* Date Range */}
+                    <div className="space-y-1">
+                      <p className="text-sm font-medium text-muted-foreground">📅 Date</p>
+                      <p className="text-sm font-medium">
+                        {new Date(incident.startDate).toLocaleDateString('en-US', { 
+                          month: 'short', 
+                          day: 'numeric', 
+                          year: 'numeric' 
+                        })} - {new Date(incident.endDate).toLocaleDateString('en-US', { 
+                          month: 'short', 
+                          day: 'numeric', 
+                          year: 'numeric' 
+                        })}
+                      </p>
+                    </div>
+                    
+                    {/* Maximum Deviation */}
+                    <div className="space-y-1">
+                      <p className="text-sm font-medium text-muted-foreground">📊 Maximum Deviation</p>
+                      <p className="text-lg font-bold text-red-600">
+                        {incident.direction === 'above' ? '+' : '-'}{incident.deviationPercent.toFixed(2)}%
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        ${incident.maxDeviationPrice.toFixed(4)}
+                      </p>
+                    </div>
+                    
+                    {/* Recovery Time */}
+                    <div className="space-y-1">
+                      <p className="text-sm font-medium text-muted-foreground">⏱️ Recovery Time</p>
+                      <p className="text-lg font-bold text-blue-600">
+                        {incident.duration.days === 0 ? 'Intraday' : incident.duration.display}
+                      </p>
+                    </div>
+                  </div>
+                  
+                  {/* Additional details */}
+                  <div className="pt-2 border-t">
+                    <p className="text-xs text-muted-foreground">
+                      <span className="font-medium">Start Price:</span> ${incident.startPrice.toFixed(4)} • 
+                      <span className="font-medium"> End Price:</span> ${incident.endPrice.toFixed(4)}
+                      {incident.duration.hours > 0 && (
+                        <>
+                          {' • '}
+                          <span className="font-medium"> Duration:</span> {incident.duration.hours} hours
+                        </>
+                      )}
                     </p>
                   </div>
-                  {event.recovery_speed && (
-                    <Badge variant="outline">
-                      Recovered in {event.recovery_speed}
-                    </Badge>
-                  )}
                 </div>
               ))}
             </div>
+            
+            {depegIncidents.length === 0 && (
+              <div className="text-center py-8">
+                <p className="text-muted-foreground">No depeg incidents detected in the last 365 days</p>
+                <p className="text-sm text-muted-foreground mt-1">
+                  {ticker} has maintained its peg within ±1% throughout the period
+                </p>
+              </div>
+            )}
           </CardContent>
         </Card>
       )}

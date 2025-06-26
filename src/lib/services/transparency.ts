@@ -6,7 +6,7 @@ import {
   isMappingDataStale,
   getKnownAttestationUrl,
   TRUSTED_ATTESTATION_PROVIDERS 
-} from './stablecoin-mapping-table'
+} from './stablecoin-mapping-utils'
 import { cacheService } from './cache-service'
 import { metricsService } from './metrics-service'
 import { ApiClient } from './api-client'
@@ -824,6 +824,9 @@ export class TransparencyService {
 
     // Update frequency
     switch (data.update_frequency) {
+      case 'real-time':
+        score += 15 // Real-time gets full score
+        break
       case 'daily':
         score += 15
         break

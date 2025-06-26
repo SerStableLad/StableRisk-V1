@@ -26,7 +26,7 @@ async function testProximityMatching() {
       console.log(`\n2. Testing proximity matching for ${firm}...`);
       
       let firmUrl = undefined
-      let matchDetails = []
+      const matchDetails = []
       
       // For each PDF link, check if it's near this firm name
       for (const pdfLink of allPdfLinks) {

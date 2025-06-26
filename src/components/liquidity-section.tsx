@@ -1,11 +1,13 @@
 'use client'
 
-import React from 'react'
+import React, { useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts'
+import { TVLHistoryChart } from '@/components/tvl-history-chart'
 import { 
   TrendingUp, 
   ExternalLink, 
@@ -19,11 +21,13 @@ import {
   Zap,
   Target,
   Layers,
-  PieChart,
+  PieChart as PieChartIcon,
   Activity,
   Globe,
   ArrowUpDown,
-  RefreshCw
+  RefreshCw,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react'
 
 interface Exchange {
@@ -54,6 +58,19 @@ interface LiquidityPool {
   risk_level: 'low' | 'medium' | 'high' | 'very_high'
 }
 
+interface TVLHistoryData {
+  timestamp: number
+  date: string
+  tvl: number
+  chain: string
+}
+
+interface ChainTVLHistory {
+  chain: string
+  data: TVLHistoryData[]
+  color: string
+}
+
 interface LiquidityData {
   total_volume_24h: number
   total_volume_7d: number
@@ -81,6 +98,14 @@ interface LiquidityData {
     whale_concentration: number
   }
   liquidity_issues: string[]
+  // Add chain distribution data for volume pie chart
+  chain_distribution?: Array<{
+    chain: string
+    liquidity: number
+    percentage: number
+  }>
+  // Add historical TVL data for Phase 2 chart
+  historical_tvl?: ChainTVLHistory[]
   last_liquidity_crisis?: {
     date: string
     description: string
@@ -97,7 +122,7 @@ interface LiquiditySectionProps {
 // Generate mock data for development
 function generateMockData(ticker: string): LiquidityData {
   const liquidityData: Record<string, Partial<LiquidityData>> = {
-    'USDT': {
+    'USDT0': {
       total_volume_24h: 50800000000,
       total_volume_7d: 345600000000,
       volume_change_24h: 2.8,
@@ -113,7 +138,7 @@ function generateMockData(ticker: string): LiquidityData {
           market_depth_1_percent: 125000000,
           last_updated: new Date(Date.now() - 120000).toISOString(),
           is_active: true,
-          trading_pairs: ['USDT/USDC', 'BTC/USDT', 'ETH/USDT'],
+          trading_pairs: ['USDT0/USDC', 'BTC/USDT0', 'ETH/USDT0'],
           website_url: 'https://binance.com'
         },
         {
@@ -125,7 +150,7 @@ function generateMockData(ticker: string): LiquidityData {
           market_depth_1_percent: 45000000,
           last_updated: new Date(Date.now() - 180000).toISOString(),
           is_active: true,
-          trading_pairs: ['USDT/USDC', 'USDT/DAI', 'USDT/WETH']
+          trading_pairs: ['USDT0/USDC', 'USDT0/DAI', 'USDT0/WETH']
         }
       ],
       liquidity_pools: [
@@ -135,7 +160,7 @@ function generateMockData(ticker: string): LiquidityData {
           tvl: 185000000,
           volume_24h: 2800000000,
           apr: 0.8,
-          token_pair: 'USDT/USDC',
+          token_pair: 'USDT0/USDC',
           pool_composition: {
             token1_percentage: 52,
             token2_percentage: 48
@@ -191,7 +216,7 @@ function generateMockData(ticker: string): LiquidityData {
           tvl: 425000000,
           volume_24h: 180000000,
           apr: 1.2,
-          token_pair: 'USDC/USDT/DAI',
+          token_pair: 'USDC/USDT0/DAI',
           pool_composition: {
             token1_percentage: 33,
             token2_percentage: 67
@@ -236,7 +261,7 @@ function generateMockData(ticker: string): LiquidityData {
           market_depth_1_percent: 12000000,
           last_updated: new Date(Date.now() - 240000).toISOString(),
           is_active: true,
-          trading_pairs: ['DAI/USDC', 'DAI/ETH', 'DAI/USDT']
+          trading_pairs: ['DAI/USDC', 'DAI/ETH', 'DAI/USDT0']
         }
       ],
       liquidity_pools: [
@@ -390,7 +415,91 @@ const getRiskLevelBadge = (level: string) => {
   )
 }
 
+// Blockchain color mapping for consistent visualization
+const BLOCKCHAIN_COLORS = {
+  'ethereum': '#627EEA',
+  'polygon': '#8247E5', 
+  'bsc': '#F3BA2F',
+  'arbitrum': '#28A0F0',
+  'optimism': '#FF0420',
+  'avalanche': '#E84142',
+  'solana': '#9945FF',
+  'base': '#0052FF',
+  'fantom': '#1969FF',
+  'cronos': '#002D74',
+  'default': '#8B5CF6'
+}
+
+// Volume by Blockchain Chart Component
+interface VolumeByBlockchainChartProps {
+  chainData: Array<{
+    chain: string
+    liquidity: number
+    percentage: number
+  }>
+}
+
+function VolumeByBlockchainChart({ chainData }: VolumeByBlockchainChartProps) {
+  // Transform data for Recharts
+  const chartData = chainData.map(item => ({
+    name: item.chain.charAt(0).toUpperCase() + item.chain.slice(1),
+    value: item.percentage,
+    liquidity: item.liquidity,
+    color: BLOCKCHAIN_COLORS[item.chain.toLowerCase() as keyof typeof BLOCKCHAIN_COLORS] || BLOCKCHAIN_COLORS.default
+  }))
+
+  const CustomTooltip = ({ active, payload }: any) => {
+    if (active && payload && payload.length) {
+      const data = payload[0].payload
+      return (
+        <div className="bg-white dark:bg-gray-800 p-3 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg">
+          <p className="font-medium">{data.name}</p>
+          <p className="text-sm text-gray-600 dark:text-gray-400">
+            Volume: ${data.liquidity.toLocaleString()}
+          </p>
+          <p className="text-sm text-gray-600 dark:text-gray-400">
+            Share: {data.value.toFixed(1)}%
+          </p>
+        </div>
+      )
+    }
+    return null
+  }
+
+  return (
+    <div className="h-64 w-full">
+      <ResponsiveContainer width="100%" height="100%">
+        <PieChart>
+          <Pie
+            data={chartData}
+            cx="50%"
+            cy="50%"
+            innerRadius={40}
+            outerRadius={80}
+            paddingAngle={2}
+            dataKey="value"
+          >
+            {chartData.map((entry, index) => (
+              <Cell key={`cell-${index}`} fill={entry.color} />
+            ))}
+          </Pie>
+          <Tooltip content={<CustomTooltip />} />
+          <Legend 
+            verticalAlign="bottom" 
+            height={36}
+            formatter={(value, entry: any) => (
+              <span style={{ color: entry.color }}>{value}</span>
+            )}
+          />
+        </PieChart>
+      </ResponsiveContainer>
+    </div>
+  )
+}
+
 export function LiquiditySection({ ticker, data: propData }: LiquiditySectionProps) {
+  const [showAllExchanges, setShowAllExchanges] = useState(false)
+  
   // Use real data only - no fallback to mock data
   if (!propData) {
     return (
@@ -404,7 +513,16 @@ export function LiquiditySection({ ticker, data: propData }: LiquiditySectionPro
   }
   
   const data = propData
+
+  // Filter active exchanges and separate by volume percentage
+  const activeExchanges = data.exchanges.filter(e => e.is_active)
+  const majorExchanges = activeExchanges.filter(e => e.volume_percentage >= 0.5)
+  const minorExchanges = activeExchanges.filter(e => e.volume_percentage < 0.5)
   
+  const visibleExchanges = showAllExchanges 
+    ? [...majorExchanges, ...minorExchanges] 
+    : majorExchanges
+
   return (
     <div className="space-y-6">
       {/* Section Header */}
@@ -502,16 +620,7 @@ export function LiquiditySection({ ticker, data: propData }: LiquiditySectionPro
               <p className="font-medium">{data.exchanges.filter(e => e.is_active).length} venues</p>
             </div>
             
-            <div>
-              <p className="text-muted-foreground">Liquidation Risk</p>
-              <p className={`font-medium ${
-                data.liquidation_risk.risk_level === 'low' ? 'text-green-600' :
-                data.liquidation_risk.risk_level === 'medium' ? 'text-yellow-600' :
-                'text-red-600'
-              }`}>
-                {data.liquidation_risk.risk_level.charAt(0).toUpperCase() + data.liquidation_risk.risk_level.slice(1)}
-              </p>
-            </div>
+
           </div>
         </CardContent>
       </Card>
@@ -520,7 +629,7 @@ export function LiquiditySection({ ticker, data: propData }: LiquiditySectionPro
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center space-x-2">
-            <PieChart className="h-5 w-5" />
+            <PieChartIcon className="h-5 w-5" />
             <span>Exchange Distribution</span>
           </CardTitle>
         </CardHeader>
@@ -556,43 +665,48 @@ export function LiquiditySection({ ticker, data: propData }: LiquiditySectionPro
             </div>
             
             <div className="space-y-4">
-              <h4 className="font-medium">Market Depth Analysis</h4>
-              <div className="space-y-3 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">1% Depth</span>
-                  <span className="font-medium">{formatNumber(data.market_depth_analysis.depth_1_percent)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">5% Depth</span>
-                  <span className="font-medium">{formatNumber(data.market_depth_analysis.depth_5_percent)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">10% Depth</span>
-                  <span className="font-medium">{formatNumber(data.market_depth_analysis.depth_10_percent)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Average Spread</span>
-                  <span className={`font-medium ${getSpreadColor(data.market_depth_analysis.average_spread)}`}>
-                    {(data.market_depth_analysis.average_spread * 100).toFixed(3)}%
-                  </span>
-                </div>
+              <div className="flex items-center space-x-2">
+                <PieChartIcon className="h-5 w-5" />
+                <h4 className="font-medium">Volume by Blockchain</h4>
               </div>
+              {data.chain_distribution && data.chain_distribution.length > 0 ? (
+                <VolumeByBlockchainChart chainData={data.chain_distribution} />
+              ) : (
+                <div className="text-center py-8 text-muted-foreground">
+                  <PieChartIcon className="h-12 w-12 mx-auto mb-2 opacity-50" />
+                  <p>No blockchain distribution data available</p>
+                </div>
+              )}
             </div>
           </div>
         </CardContent>
       </Card>
+
+      {/* TVL History by Blockchain - Full Width */}
+      {data.historical_tvl && data.historical_tvl.length > 0 ? (
+        <TVLHistoryChart data={data.historical_tvl} />
+      ) : (
+        <Card>
+          <CardContent>
+            <div className="text-center py-8 text-muted-foreground">
+              <Activity className="h-12 w-12 mx-auto mb-2 opacity-50" />
+              <p>No historical TVL data available</p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Major Exchanges */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center space-x-2">
             <Building2 className="h-5 w-5" />
-            <span>Major Trading Venues</span>
+                            <span>Major DEXes</span>
           </CardTitle>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {data.exchanges.map((exchange, index) => (
+            {visibleExchanges.map((exchange, index) => (
               <div key={index} className="border rounded-lg p-4">
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center space-x-3">
@@ -680,6 +794,28 @@ export function LiquiditySection({ ticker, data: propData }: LiquiditySectionPro
               </div>
             ))}
           </div>
+                      {minorExchanges.length > 0 && (
+              <div className="flex items-center justify-center mt-4">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowAllExchanges(!showAllExchanges)}
+                  className="flex items-center space-x-2"
+                >
+                  {showAllExchanges ? (
+                    <>
+                      <ChevronUp className="h-4 w-4" />
+                      <span>Show Less DEXes</span>
+                    </>
+                  ) : (
+                    <>
+                      <ChevronDown className="h-4 w-4" />
+                      <span>Show More DEXes ({minorExchanges.length})</span>
+                    </>
+                  )}
+                </Button>
+              </div>
+            )}
         </CardContent>
       </Card>
 

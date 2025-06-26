@@ -6,6 +6,7 @@ import { Search, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
+import { getCanonicalSymbol } from "@/lib/services/stablecoin-mapping-utils"
 
 interface SearchBarProps {
   className?: string
@@ -15,7 +16,7 @@ interface SearchBarProps {
 
 export function SearchBar({ 
   className, 
-  placeholder = "Enter stablecoin ticker (e.g., USDT, USDC, USDS, USDO, USDN, USDY)",
+      placeholder = "Enter stablecoin ticker (e.g., USDT0, USDC, USDS, USDO, USDN, USDY)",
   size = "default"
 }: SearchBarProps) {
   const [ticker, setTicker] = useState("")
@@ -35,11 +36,12 @@ export function SearchBar({
     setError("")
 
     try {
-      // Clean and format ticker
+      // Clean and format ticker, then get canonical symbol
       const cleanTicker = ticker.trim().toUpperCase()
+      const canonicalSymbol = getCanonicalSymbol(cleanTicker)
       
-      // Navigate to the assessment page
-      router.push(`/${cleanTicker}`)
+      // Navigate to the assessment page using canonical symbol
+      router.push(`/${canonicalSymbol}`)
     } catch (err) {
       setError("Something went wrong. Please try again.")
       console.error("Search error:", err)
@@ -99,7 +101,7 @@ export function SearchBar({
           Popular: 
           <button
             type="button"
-            onClick={() => setTicker("USD0")}
+            onClick={() => setTicker("USDO")}
             className="ml-2 text-primary hover:underline"
             disabled={isLoading}
           >

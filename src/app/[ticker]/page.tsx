@@ -1,5 +1,5 @@
 import { Suspense } from 'react'
-import { notFound } from 'next/navigation'
+import { notFound, redirect } from 'next/navigation'
 import { DashboardLayout } from '@/components/dashboard-layout'
 import { MainSummaryCard } from '@/components/main-summary-card'
 import { RiskSummaryCards } from '@/components/risk-summary-cards'
@@ -11,7 +11,7 @@ import { AuditSection } from '@/components/audit-section'
 import { LiquiditySection } from '@/components/liquidity-section'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { StablecoinDataService } from '@/lib/services/stablecoin-data'
-import { isKnownStablecoin, getKnownStablecoinEntry } from '@/lib/services/stablecoin-mapping-table'
+import { isKnownStablecoin, getKnownStablecoinEntry, checkSymbolRedirect } from '@/lib/services/stablecoin-mapping-utils'
 
 interface AssessmentPageProps {
   params: Promise<{
@@ -20,68 +20,51 @@ interface AssessmentPageProps {
 }
 
 // Get stablecoin assessment data
-async function getAssessment(ticker: string) {
+async function getAssessment(ticker: string): Promise<any | { error: string; errorType: string; tokenName?: string }> {
   try {
     console.log(`Fetching real assessment data for ${ticker}`)
     
     const dataService = new StablecoinDataService()
     console.log('StablecoinDataService created successfully')
     
-    const assessment = await dataService.getStablecoinAssessment(ticker.toUpperCase())
+    // Capture console logs to detect error types
+    const originalLog = console.log
+    const capturedLogs: string[] = []
+    console.log = (...args) => {
+      capturedLogs.push(args.join(' '))
+      originalLog(...args)
+    }
+    
+    const assessment = await dataService.getStablecoinAssessment(ticker.toLowerCase())
+    
+    // Restore original console.log
+    console.log = originalLog
+    
     console.log('API call completed, result:', assessment ? 'Success' : 'Failed')
     
     if (!assessment) {
       console.log(`No assessment data found for ${ticker}`)
-      // Try to get basic info from mapping table as fallback
-      const mappingData = isKnownStablecoin(ticker) ? getKnownStablecoinEntry(ticker) : null
       
-      // For now, let's return a basic structure to prevent 404
-      return {
-        info: {
-          name: mappingData?.name || `${ticker.toUpperCase()}`,
-          symbol: ticker.toUpperCase(),
-          image: 'https://via.placeholder.com/64',
-          market_cap: 0,
-          genesis_date: mappingData?.genesis_date || 'Unknown',
-          pegging_type: 'fiat-backed' as const,
-          blockchain: 'Unknown',
-          current_price: 1.0,
-          official_links: undefined
-        },
-        risk_scores: {
-          overall: 0,
-          peg_stability: 0,
-          transparency: 0,
-          liquidity: 0,
-          audit: 0
-        },
-        transparency: {
-          dashboard_url: undefined,
-          attestation_provider: undefined,
-          attestation_url: undefined,
-          update_frequency: 'unknown' as const,
-          last_update_date: undefined,
-          has_proof_of_reserves: false,
-          verification_status: 'unknown' as const
-        },
-        peg_stability: {
-          price_history: [],
-          average_deviation: 0,
-          depeg_incidents: 0,
-          depeg_recovery_speed: 0,
-          is_depegged: false,
-          last_depeg_date: undefined
-        },
-        liquidity: {
-          total_liquidity: 0,
-          dex_distribution: [],
-          concentration_risk: 'low' as const,
-          chain_distribution: []
-        },
-        audits: [],
-        last_updated: new Date().toISOString(),
-        data_sources: ['API Error']
+      // Check captured logs for specific error types
+      const errorLog = capturedLogs.find(log => 
+        log.includes('TOKEN_NOT_FOUND:') || 
+        log.includes('NOT_A_STABLECOIN:') || 
+        log.includes('API_ERROR:')
+      )
+      
+      if (errorLog) {
+        if (errorLog.includes('TOKEN_NOT_FOUND:')) {
+          return { error: 'Token not found', errorType: 'not_found' }
+        } else if (errorLog.includes('NOT_A_STABLECOIN:')) {
+          const tokenName = errorLog.split(':')[2] // Extract token name from log
+          return { error: 'Not a stablecoin', errorType: 'not_stablecoin', tokenName }
+        } else if (errorLog.includes('API_ERROR:')) {
+          return { error: 'API error', errorType: 'api_error' }
+        }
       }
+      
+      // Fallback to generic error
+      return { error: 'Token not found', errorType: 'not_found' }
     }
     
     console.log(`Successfully fetched assessment for ${ticker}:`, {
@@ -95,62 +78,25 @@ async function getAssessment(ticker: string) {
     console.error(`Error fetching assessment for ${ticker}:`, error)
     console.error('Error details:', error instanceof Error ? error.message : String(error))
     
-    // Try to get basic info from mapping table as fallback
-    const mappingData = isKnownStablecoin(ticker) ? getKnownStablecoinEntry(ticker) : null
-    
-    // Return a fallback structure instead of null to prevent 404
-    return {
-      info: {
-        name: mappingData?.name || `${ticker.toUpperCase()} (Error)`,
-        symbol: ticker.toUpperCase(),
-        image: 'https://via.placeholder.com/64',
-        market_cap: 0,
-        genesis_date: mappingData?.genesis_date || 'Unknown',
-        pegging_type: 'fiat-backed' as const,
-        blockchain: 'Unknown', // We don't store blockchain info in mapping table
-        current_price: 1.0,
-        official_links: undefined
-      },
-      risk_scores: {
-        overall: 0,
-        peg_stability: 0,
-        transparency: 0,
-        liquidity: 0,
-        audit: 0
-      },
-      transparency: {
-        dashboard_url: undefined,
-        attestation_provider: undefined,
-        attestation_url: undefined,
-        update_frequency: 'unknown' as const,
-        last_update_date: undefined,
-        has_proof_of_reserves: false,
-        verification_status: 'unknown' as const
-      },
-      peg_stability: {
-        price_history: [],
-        average_deviation: 0,
-        depeg_incidents: 0,
-        depeg_recovery_speed: 0,
-        is_depegged: false,
-        last_depeg_date: undefined
-      },
-      liquidity: {
-        total_liquidity: 0,
-        dex_distribution: [],
-        concentration_risk: 'low' as const,
-        chain_distribution: []
-      },
-      audits: [],
-      last_updated: new Date().toISOString(),
-      data_sources: ['API Error']
-    }
+    return { error: 'API error', errorType: 'api_error' }
   }
 }
 
 // Main dashboard content component  
 async function DashboardContent({ ticker }: { ticker: string }) {
   const assessment = await getAssessment(ticker)
+
+  // Handle error cases
+  if (assessment && 'error' in assessment) {
+    const { SimpleErrorPage } = await import('@/components/simple-error-page')
+    return (
+      <SimpleErrorPage 
+        ticker={ticker.toUpperCase()} 
+        errorType={assessment.errorType as 'not_found' | 'not_stablecoin' | 'api_error'}
+        tokenName={assessment.tokenName}
+      />
+    )
+  }
 
   if (!assessment) {
     notFound()
@@ -235,7 +181,7 @@ async function DashboardContent({ ticker }: { ticker: string }) {
         { 
           label: 'Update Frequency', 
           value: assessment.transparency?.update_frequency || 'Unknown',
-          isGood: assessment.transparency?.update_frequency === 'daily' || assessment.transparency?.update_frequency === 'weekly'
+          isGood: ['real-time', 'daily', 'weekly'].includes(assessment.transparency?.update_frequency || '')
         },
         { 
           label: 'Dashboard Available', 
@@ -285,9 +231,9 @@ async function DashboardContent({ ticker }: { ticker: string }) {
         : 'No recent audit information available',
       lastUpdated: '7d ago',
       isVerified: (assessment.audits?.length || 0) > 0,
-      hasIssues: assessment.audits?.some(audit => audit.critical_high_issues > 0) || false,
+      hasIssues: assessment.audits?.some((audit: any) => audit.critical_high_issues > 0) || false,
       explanation: assessment.audits?.length
-        ? `${assessment.audits.some(audit => audit.critical_high_issues > 0) ? 'Moderate' : 'Good'} audit score based on ${assessment.audits.length} recent audit${assessment.audits.length > 1 ? 's' : ''}. ${assessment.audits.some(audit => audit.critical_high_issues > 0) ? 'Some critical or high-severity issues were identified, which impacts the score.' : 'No critical issues identified in recent audits.'} Regular security assessments by reputable firms indicate commitment to security best practices.`
+        ? `${assessment.audits.some((audit: any) => audit.critical_high_issues > 0) ? 'Moderate' : 'Good'} audit score based on ${assessment.audits.length} recent audit${assessment.audits.length > 1 ? 's' : ''}. ${assessment.audits.some((audit: any) => audit.critical_high_issues > 0) ? 'Some critical or high-severity issues were identified, which impacts the score.' : 'No critical issues identified in recent audits.'} Regular security assessments by reputable firms indicate commitment to security best practices.`
         : `Lower audit score due to lack of recent public audit information. Without regular security assessments, potential vulnerabilities may go undetected. Smart contract audits are crucial for identifying security risks and ensuring user funds are protected.`,
       keyMetrics: [
         { 
@@ -297,8 +243,8 @@ async function DashboardContent({ ticker }: { ticker: string }) {
         },
         { 
           label: 'Critical Issues', 
-          value: `${assessment.audits?.reduce((sum, audit) => sum + (audit.critical_high_issues || 0), 0) || 0}`,
-          isGood: (assessment.audits?.reduce((sum, audit) => sum + (audit.critical_high_issues || 0), 0) || 0) === 0
+          value: `${assessment.audits?.reduce((sum: number, audit: any) => sum + (audit.critical_high_issues || 0), 0) || 0}`,
+          isGood: (assessment.audits?.reduce((sum: number, audit: any) => sum + (audit.critical_high_issues || 0), 0) || 0) === 0
         },
         ...(assessment.audits?.length ? [{
           label: 'Latest Audit', 
@@ -356,155 +302,162 @@ async function DashboardContent({ ticker }: { ticker: string }) {
       <div className="space-y-12" id="detailed-sections">
         
         {/* Peg Stability Section - Always show since we always have price data */}
-        <div id="peg-stability" className="scroll-mt-20">
-          <PegStabilitySection 
-            ticker={ticker} 
-            data={assessment.peg_stability ? {
-              price_history: assessment.peg_stability.price_history?.map(point => ({
-                date: new Date(point.timestamp).toISOString().split('T')[0],
-                price: point.price,
-                timestamp: point.timestamp,
-                isDepeg: Math.abs(point.price - 1.0) > 0.01
-              })) || [],
-              statistics: {
-                average_deviation_percent: assessment.peg_stability.average_deviation || 0,
-                depeg_incidents_count: assessment.peg_stability.depeg_incidents || 0,
-                max_deviation_percent: Math.max(...(assessment.peg_stability.price_history?.map(p => Math.abs(p.price - 1.0)) || [0])) * 100,
-                recovery_speed_hours: assessment.peg_stability.depeg_recovery_speed || undefined,
-                current_deviation_percent: assessment.peg_stability.price_history?.length 
-                  ? Math.abs(assessment.peg_stability.price_history[assessment.peg_stability.price_history.length - 1].price - 1.0) * 100
-                  : 0
-              },
-              depeg_events: [], // Will be derived from price history
-              is_currently_depegged: assessment.peg_stability.is_depegged || false,
-              days_since_depeg: assessment.peg_stability.last_depeg_date 
-                ? Math.floor((Date.now() - new Date(assessment.peg_stability.last_depeg_date).getTime()) / (1000 * 60 * 60 * 24))
-                : undefined
-            } : null} 
-          />
-        </div>
+      <div id="peg-stability" className="scroll-mt-20">
+        <PegStabilitySection 
+          ticker={ticker} 
+          data={assessment.peg_stability ? {
+            price_history: assessment.peg_stability.price_history?.map((point: any) => ({
+              date: new Date(point.timestamp).toISOString().split('T')[0],
+              price: point.price,
+              timestamp: point.timestamp,
+              isDepeg: Math.abs(point.price - 1.0) > 0.01
+            })) || [],
+            statistics: {
+              average_deviation_percent: assessment.peg_stability.average_deviation || 0,
+              depeg_incidents_count: assessment.peg_stability.depeg_incidents || 0,
+              max_deviation_percent: Math.max(...(assessment.peg_stability.price_history?.map((p: any) => Math.abs(p.price - 1.0)) || [0])) * 100,
+              recovery_speed_hours: assessment.peg_stability.depeg_recovery_speed || undefined,
+              current_deviation_percent: assessment.peg_stability.price_history?.length 
+                ? Math.abs(assessment.peg_stability.price_history[assessment.peg_stability.price_history.length - 1].price - 1.0) * 100
+                : 0
+            },
+            depeg_events: [], // Will be derived from price history
+            is_currently_depegged: assessment.peg_stability.is_depegged || false,
+            days_since_depeg: assessment.peg_stability.last_depeg_date 
+              ? Math.floor((Date.now() - new Date(assessment.peg_stability.last_depeg_date).getTime()) / (1000 * 60 * 60 * 24))
+              : undefined
+          } : null} 
+        />
+      </div>
 
         {/* Transparency Section - Only show if we have transparency data */}
         {assessment.risk_scores?.transparency !== null && (
-          <div id="transparency" className="scroll-mt-20">
-            <TransparencySection 
-              ticker={ticker} 
-              data={assessment.transparency ? {
-                dashboard_url: assessment.transparency.dashboard_url,
-                has_proof_of_reserves: assessment.transparency.has_proof_of_reserves,
-                proof_of_reserves_score: assessment.transparency.has_proof_of_reserves ? 85 : 0,
-                attestation_providers: assessment.transparency.attestation_provider ? [{
-                  name: assessment.transparency.attestation_provider,
-                  type: 'accounting_firm' as const,
-                  reputation_score: 8.5,
-                  last_report_date: assessment.transparency.last_update_date || new Date().toISOString().split('T')[0],
-                  report_url: assessment.transparency.attestation_url,
-                  is_verified: assessment.transparency.verification_status === 'verified'
-                }] : [],
-                update_frequency: assessment.transparency.update_frequency,
-                is_verified_source: assessment.transparency.verification_status === 'verified',
-                transparency_issues: [],
-                last_updated: assessment.transparency.last_update_date || new Date().toISOString().split('T')[0],
-                reserve_composition: {
-                  cash_and_equivalents: 85,
-                  treasury_bills: 10,
-                  other_investments: 5,
-                  crypto_assets: 0
-                }
-              } : null} 
-            />
-          </div>
+        <div id="transparency" className="scroll-mt-20">
+          <TransparencySection 
+            ticker={ticker} 
+            data={assessment.transparency ? {
+              dashboard_url: assessment.transparency.dashboard_url,
+              has_proof_of_reserves: assessment.transparency.has_proof_of_reserves,
+              proof_of_reserves_score: assessment.risk_scores?.transparency || 0,
+              attestation_providers: assessment.transparency.attestation_provider ? [{
+                name: assessment.transparency.attestation_provider,
+                type: 'audit_firm' as const,
+                reputation_score: 8.5,
+                last_report_date: assessment.transparency.last_update_date || new Date().toISOString().split('T')[0],
+                report_url: assessment.transparency.attestation_url,
+                is_verified: assessment.transparency.verification_status === 'verified'
+              }] : [],
+              update_frequency: assessment.transparency.update_frequency,
+              is_verified_source: assessment.transparency.verification_status === 'verified',
+              transparency_issues: [],
+              last_updated: assessment.transparency.last_update_date || new Date().toISOString().split('T')[0],
+              // Reserve composition data - HIDDEN FOR NOW
+              /* 
+              reserve_composition: {
+                cash_and_equivalents: 85,
+                treasury_bills: 10,
+                other_investments: 5,
+                crypto_assets: 0
+              }
+              */
+            } : null} 
+          />
+        </div>
         )}
 
         {/* Liquidity Section - Only show if we have liquidity data */}
         {assessment.risk_scores?.liquidity !== null && (
-          <div id="liquidity" className="scroll-mt-20">
-            <LiquiditySection 
-              ticker={ticker} 
-              data={assessment.liquidity ? {
-                total_volume_24h: assessment.liquidity.total_liquidity || 0,
-                total_volume_7d: (assessment.liquidity.total_liquidity || 0) * 7,
-                volume_change_24h: 0,
-                market_cap: assessment.info.market_cap || 0,
-                liquidity_score: assessment.risk_scores?.liquidity || 0,
-                exchanges: assessment.liquidity.dex_distribution?.map(dex => ({
-                  name: dex.dex,
-                  type: 'DEX' as const,
-                  volume_24h: dex.liquidity,
-                  volume_percentage: dex.percentage,
-                  spread: 0.005,
-                  market_depth_1_percent: dex.liquidity * 0.1,
-                  last_updated: new Date().toISOString(),
-                  is_active: true,
-                  trading_pairs: [`${ticker}/USDC`, `${ticker}/ETH`]
-                })) || [],
-                liquidity_pools: [],
-                market_depth_analysis: {
-                  depth_1_percent: (assessment.liquidity.total_liquidity || 0) * 0.1,
-                  depth_5_percent: (assessment.liquidity.total_liquidity || 0) * 0.3,
-                  depth_10_percent: (assessment.liquidity.total_liquidity || 0) * 0.5,
-                  average_spread: 0.005
-                },
-                exchange_distribution: {
-                  cex_percentage: 70,
-                  dex_percentage: 30,
-                  cex_volume: (assessment.liquidity.total_liquidity || 0) * 0.7,
-                  dex_volume: (assessment.liquidity.total_liquidity || 0) * 0.3
-                },
-                liquidation_risk: {
-                  risk_level: assessment.liquidity.concentration_risk || 'medium',
-                  factors: assessment.liquidity.concentration_risk === 'low' 
-                    ? ['Well distributed across multiple venues']
-                    : ['Concentration risk present'],
-                  concentrated_holdings: assessment.liquidity.concentration_risk === 'high' ? 60 : 20,
-                  whale_concentration: assessment.liquidity.concentration_risk === 'high' ? 50 : 15
-                },
-                liquidity_issues: assessment.liquidity.concentration_risk === 'high' 
-                  ? ['High concentration risk']
-                  : []
-              } : null} 
-            />
-          </div>
+        <div id="liquidity" className="scroll-mt-20">
+          <LiquiditySection 
+            ticker={ticker} 
+            data={assessment.liquidity ? {
+              total_volume_24h: assessment.liquidity.total_liquidity || 0,
+              total_volume_7d: (assessment.liquidity.total_liquidity || 0) * 7,
+              volume_change_24h: 0,
+              market_cap: assessment.info.market_cap || 0,
+              liquidity_score: assessment.risk_scores?.liquidity || 0,
+              exchanges: assessment.liquidity.dex_distribution?.map((dex: any) => ({
+                name: dex.dex,
+                type: 'DEX' as const,
+                volume_24h: dex.liquidity,
+                volume_percentage: dex.percentage,
+                spread: 0.005,
+                market_depth_1_percent: dex.liquidity * 0.1,
+                last_updated: new Date().toISOString(),
+                is_active: true,
+                trading_pairs: [`${ticker}/USDC`, `${ticker}/ETH`]
+              })) || [],
+              liquidity_pools: [],
+              market_depth_analysis: {
+                depth_1_percent: (assessment.liquidity.total_liquidity || 0) * 0.1,
+                depth_5_percent: (assessment.liquidity.total_liquidity || 0) * 0.3,
+                depth_10_percent: (assessment.liquidity.total_liquidity || 0) * 0.5,
+                average_spread: 0.005
+              },
+              exchange_distribution: {
+                cex_percentage: assessment.liquidity.cex_percentage ?? 70,
+                dex_percentage: assessment.liquidity.dex_percentage ?? 30,
+                cex_volume: assessment.liquidity.cex_volume ?? ((assessment.liquidity.total_liquidity || 0) * 0.7),
+                dex_volume: assessment.liquidity.dex_volume ?? ((assessment.liquidity.total_liquidity || 0) * 0.3)
+              },
+              liquidation_risk: {
+                risk_level: assessment.liquidity.concentration_risk || 'medium',
+                factors: assessment.liquidity.concentration_risk === 'low' 
+                  ? ['Well distributed across multiple venues']
+                  : ['Concentration risk present'],
+                concentrated_holdings: assessment.liquidity.concentration_risk === 'high' ? 60 : 20,
+                whale_concentration: assessment.liquidity.concentration_risk === 'high' ? 50 : 15
+              },
+              liquidity_issues: assessment.liquidity.concentration_risk === 'high' 
+                ? ['High concentration risk']
+                : [],
+              // Add chain distribution data for the volume pie chart
+              chain_distribution: assessment.liquidity.chain_distribution || [],
+              // Add historical TVL data for Phase 2 chart
+              historical_tvl: assessment.liquidity.historical_tvl || []
+            } : null} 
+          />
+        </div>
         )}
 
         {/* Audit Section - Only show if we have audit data */}
         {assessment.risk_scores?.audit !== null && (
-          <div id="audit" className="scroll-mt-20">
-            <AuditSection 
-              ticker={ticker} 
-              data={assessment.audits?.length ? {
-                recent_audits: assessment.audits.map(audit => ({
-                  firm_name: audit.firm,
-                  audit_type: 'comprehensive' as const,
-                  audit_date: audit.date,
-                  report_url: audit.report_url,
-                  findings: audit.critical_high_issues > 0 ? [{
-                    severity: 'high' as const,
-                    title: 'Security Issues Identified',
-                    description: `${audit.critical_high_issues} critical/high issues found`,
-                    status: audit.resolution_status === 'resolved' ? 'resolved' as const : 'open' as const,
-                    date_found: audit.date,
-                    date_resolved: audit.resolution_status === 'resolved' ? audit.date : undefined
-                  }] : [],
-                  overall_score: audit.critical_high_issues === 0 ? 95 : 70,
-                  is_verified: true,
-                  coverage_areas: ['Smart Contracts', 'Security', 'Operations'],
-                  methodology: audit.is_top_tier ? 'Comprehensive Security Audit' : 'Standard Security Review'
-                })),
-                audit_frequency: assessment.audits.length > 2 ? 'quarterly' as const : 'semi_annual' as const,
-                last_audit_date: assessment.audits[0]?.date || new Date().toISOString().split('T')[0],
-                critical_issues_count: assessment.audits.reduce((sum, audit) => sum + (audit.critical_high_issues || 0), 0),
-                high_issues_count: 0,
-                total_issues_resolved: assessment.audits.filter(audit => audit.resolution_status === 'resolved').length,
-                audit_coverage_score: assessment.risk_scores?.audit || 0,
-                has_continuous_monitoring: assessment.audits.some(audit => audit.is_top_tier),
-                next_scheduled_audit: undefined,
-                audit_issues: assessment.audits.some(audit => audit.critical_high_issues > 0) 
-                  ? ['Critical issues identified in recent audits']
-                  : []
-              } : null} 
-            />
-          </div>
+        <div id="audit" className="scroll-mt-20">
+          <AuditSection 
+            ticker={ticker} 
+            data={assessment.audits?.length ? {
+              recent_audits: assessment.audits.map((audit: any) => ({
+                firm_name: audit.firm,
+                audit_type: 'comprehensive' as const,
+                audit_date: audit.date,
+                report_url: audit.report_url,
+                findings: audit.critical_high_issues > 0 ? [{
+                  severity: 'high' as const,
+                  title: 'Security Issues Identified',
+                  description: `${audit.critical_high_issues} critical/high issues found`,
+                  status: audit.resolution_status === 'resolved' ? 'resolved' as const : 'open' as const,
+                  date_found: audit.date,
+                  date_resolved: audit.resolution_status === 'resolved' ? audit.date : undefined
+                }] : [],
+                overall_score: audit.critical_high_issues === 0 ? 95 : 70,
+                is_verified: true,
+                coverage_areas: ['Smart Contracts', 'Security', 'Operations'],
+                methodology: audit.is_top_tier ? 'Comprehensive Security Audit' : 'Standard Security Review'
+              })),
+              audit_frequency: assessment.audits.length > 2 ? 'quarterly' as const : 'semi_annual' as const,
+              last_audit_date: assessment.audits[0]?.date || new Date().toISOString().split('T')[0],
+              critical_issues_count: assessment.audits.reduce((sum: number, audit: any) => sum + (audit.critical_high_issues || 0), 0),
+              high_issues_count: 0,
+              total_issues_resolved: assessment.audits.reduce((sum: number, audit: any) => sum + (audit.critical_high_issues || 0), 0),
+              audit_coverage_score: assessment.risk_scores?.audit || 0,
+              has_continuous_monitoring: assessment.audits.some((audit: any) => audit.is_top_tier),
+              next_scheduled_audit: undefined,
+              audit_issues: assessment.audits.some((audit: any) => audit.critical_high_issues > 0) 
+                ? ['Critical issues identified in recent audits']
+                : []
+            } : null} 
+          />
+        </div>
         )}
 
       </div>
@@ -627,6 +580,12 @@ export default async function AssessmentPage({
 }: AssessmentPageProps) {
   const { ticker } = await params
   const cleanTicker = ticker.toUpperCase()
+  
+  // Check if this symbol needs to be redirected to its canonical form
+  const redirectInfo = checkSymbolRedirect(cleanTicker)
+  if (redirectInfo.shouldRedirect) {
+    redirect(`/${redirectInfo.canonicalSymbol}`)
+  }
 
   return (
     <DashboardLayout ticker={cleanTicker}>

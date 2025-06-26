@@ -20,7 +20,7 @@ import {
 
 interface AttestationProvider {
   name: string
-  type: 'accounting_firm' | 'audit_firm' | 'blockchain_analytics' | 'self_reported'
+  type: 'audit_firm' | 'blockchain_analytics' | 'self_reported'
   reputation_score: number
   last_report_date: string
   report_url?: string
@@ -59,7 +59,7 @@ function generateMockData(ticker: string): TransparencyData {
       attestation_providers: [
         {
           name: 'BDO Italia',
-          type: 'accounting_firm',
+          type: 'audit_firm',
           reputation_score: 8.5,
           last_report_date: '2024-09-30',
           report_url: 'https://tether.to/en/transparency/',
@@ -77,7 +77,7 @@ function generateMockData(ticker: string): TransparencyData {
       attestation_providers: [
         {
           name: 'Grant Thornton LLP',
-          type: 'accounting_firm',
+          type: 'audit_firm',
           reputation_score: 9.2,
           last_report_date: '2024-10-31',
           report_url: 'https://www.centre.io/usdc-transparency',
@@ -154,8 +154,6 @@ const getUpdateFrequencyBadge = (frequency: string) => {
 
 const getProviderTypeBadge = (type: string) => {
   switch (type) {
-    case 'accounting_firm':
-      return <Badge variant="default" className="bg-green-100 text-green-800">Accounting Firm</Badge>
     case 'audit_firm':
       return <Badge variant="default" className="bg-green-100 text-green-800">Audit Firm</Badge>
     case 'blockchain_analytics':

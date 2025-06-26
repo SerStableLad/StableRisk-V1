@@ -1,6 +1,6 @@
 import { ApiClient } from './api-client'
-import { config } from '@/lib/config'
-import { AuditInfo } from '@/lib/types'
+import { config } from '../config'
+import { AuditInfo } from '../types'
 import { cacheService } from './cache-service'
 import { metricsService } from './metrics-service'
 import { playwrightScraperService } from './playwright-scraper'
@@ -10,7 +10,7 @@ import {
   isKnownStablecoin, 
   getMappingMetadata,
   isMappingDataStale 
-} from './stablecoin-mapping-table'
+} from './stablecoin-mapping-utils'
 
 interface GitHubSearchResponse {
   total_count: number
@@ -51,11 +51,103 @@ interface GitHubRepoContent {
  * - No rate limiting issues
  */
 export class AuditDiscoveryService {
-  private githubClient = new ApiClient('https://api.github.com', {
-    'Authorization': `token ${config.github.accessToken}`,
-    'Accept': 'application/vnd.github.v3+json',
-    'User-Agent': 'StableRisk/1.0',
-  })
+  private readonly githubClient: ApiClient
+  private readonly CACHE_TTL = 24 * 60 * 60 * 1000 // 24 hours
+  
+  // 🚀 GitHub API Rate Limiting Configuration
+  private readonly GITHUB_API_LIMITS = {
+    authenticated: 5000,      // 5,000 requests per hour with token
+    unauthenticated: 60,      // 60 requests per hour without token
+    resetWindow: 60 * 60 * 1000 // 1 hour in milliseconds
+  }
+  
+  private githubRateLimitRemaining: number = this.GITHUB_API_LIMITS.authenticated
+  private githubRateLimitReset: number = Date.now() + this.GITHUB_API_LIMITS.resetWindow
+
+  constructor() {
+    // 🚀 GitHub API Client with Authentication
+    const githubToken = config.github.accessToken
+    const githubHeaders: Record<string, string> = {
+      'Accept': 'application/vnd.github.v3+json',
+      'User-Agent': 'StableRisk-Audit-Discovery/1.0'
+    }
+    
+    // Add authentication if token is available
+    if (githubToken) {
+      githubHeaders['Authorization'] = `token ${githubToken}`
+      console.log('🔑 GitHub API authenticated with token')
+    } else {
+      console.log('⚠️ GitHub API running without authentication (rate limited)')
+    }
+    
+    this.githubClient = new ApiClient('https://api.github.com', githubHeaders)
+  }
+
+  /**
+   * 🚦 Check GitHub API rate limit before making requests
+   */
+  private async checkGitHubRateLimit(): Promise<boolean> {
+    const now = Date.now()
+    
+    // Reset rate limit if window has passed
+    if (now >= this.githubRateLimitReset) {
+      this.githubRateLimitRemaining = this.GITHUB_API_LIMITS.authenticated
+      this.githubRateLimitReset = now + this.GITHUB_API_LIMITS.resetWindow
+      console.log('🔄 GitHub API rate limit window reset')
+    }
+    
+    // Check if we have remaining requests
+    if (this.githubRateLimitRemaining <= 0) {
+      const waitTime = this.githubRateLimitReset - now
+      console.log(`⏳ GitHub API rate limit exceeded. Waiting ${Math.ceil(waitTime / 1000)}s`)
+      return false
+    }
+    
+    return true
+  }
+
+  /**
+   * 🔄 Update GitHub API rate limit after response
+   */
+  private updateGitHubRateLimit(response: any): void {
+    // GitHub returns rate limit info in headers
+    if (response.headers) {
+      const remaining = parseInt(response.headers['x-ratelimit-remaining'] || '0')
+      const reset = parseInt(response.headers['x-ratelimit-reset'] || '0') * 1000
+      
+      if (remaining !== undefined) {
+        this.githubRateLimitRemaining = remaining
+      }
+      if (reset) {
+        this.githubRateLimitReset = reset
+      }
+      
+      console.log(`📊 GitHub API: ${this.githubRateLimitRemaining} requests remaining`)
+    }
+  }
+
+  /**
+   * 🚀 Enhanced GitHub API client with rate limiting
+   */
+  private async githubApiGet<T>(endpoint: string): Promise<T> {
+    // Check rate limit before request
+    if (!(await this.checkGitHubRateLimit())) {
+      throw new Error('GitHub API rate limit exceeded')
+    }
+    
+    try {
+      const response = await this.githubClient.get<T>(endpoint)
+      
+      // Update rate limit tracking
+      this.updateGitHubRateLimit(response)
+      this.githubRateLimitRemaining--
+      
+      return response
+    } catch (error) {
+      console.error(`GitHub API error for ${endpoint}:`, error)
+      throw error
+    }
+  }
 
   // Known audit firms and their patterns
   private readonly AUDIT_FIRMS = {
@@ -66,7 +158,8 @@ export class AuditDiscoveryService {
       'Quantstamp',
       'ChainSecurity',
       'Sigma Prime',
-      'Least Authority'
+      'Least Authority',
+      'Zellic'
     ],
     'tier2': [
       'PeckShield',
@@ -76,7 +169,10 @@ export class AuditDiscoveryService {
       'ImmuneBytes',
       'Hacken',
       'MixBytes',
-      'SmartDec'
+      'SmartDec',
+      'Guardian',
+      'OtterSec',
+      'Paladin'
     ]
   }
 
@@ -99,13 +195,12 @@ export class AuditDiscoveryService {
   private readonly SUFFICIENT_AUDIT_COUNT = 3;
 
   /**
-   * 🚀 OPTIMIZED AUDIT DISCOVERY WITH MAPPING TABLE PRIORITY
+   * 🎯 Main audit discovery entry point
    * 
-   * Correct Workflow:
-   * 1. Check mapping table first for curated audit URLs
-   * 2. If mapping URL exists and works, use it directly (10x faster)
-   * 3. Only fall back to search if no mapping data or URL fails
-   * 4. Run parallel search with early termination if needed
+   * Uses a 3-tier priority system:
+   * 1. 🏆 Curated mapping table (fastest, most reliable)
+   * 2. 🚀 GitHub repositories (fast API-based search)  
+   * 3. 🌐 Web documentation sites (slower web scraping)
    */
   async discoverAudits(
     stablecoinSymbol: string, 
@@ -113,134 +208,97 @@ export class AuditDiscoveryService {
     githubRepos?: string[],
     homepageUrls?: string[]
   ): Promise<AuditInfo[]> {
-    // Start performance tracking
     const startTime = Date.now();
-    // Note: We'll record the API duration at the end when we have the timing
+    console.log(`🔍 Starting audit discovery for ${stablecoinSymbol}`);
     
-    // Check cache first
-    const cacheKey = `audit:${stablecoinSymbol}`;
-    const cachedAudits = await cacheService.get(cacheKey);
-    if (cachedAudits && Array.isArray(cachedAudits)) {
-      console.log(`✅ Using cached audits for ${stablecoinSymbol}`);
-      return cachedAudits as AuditInfo[];
-    }
-
-    // 🏆 PRIORITY 1: Check mapping table for curated audit URLs
+    // 🏆 TIER 1: Check curated mapping table first (fastest path)
     const knownAuditUrl = getKnownAuditFolderUrl(stablecoinSymbol);
+    
     if (knownAuditUrl) {
-      console.log(`📋 Found curated audit URL for ${stablecoinSymbol}: ${knownAuditUrl}`);
+      console.log(`🏆 Found curated audit URL: ${knownAuditUrl}`);
       
-      try {
-        const mappingAudits = await this.analyzeKnownAuditUrl(knownAuditUrl, stablecoinSymbol);
-        if (mappingAudits.length > 0) {
-          console.log(`✅ Successfully retrieved ${mappingAudits.length} audits from mapping table URL`);
-          
-          // Check if mapping data is stale and log warning
-          if (isMappingDataStale(stablecoinSymbol)) {
-            console.warn(`⏰ Mapping data for ${stablecoinSymbol} may be stale - recommend updating`);
-          }
-          
-          // Cache the successful result
-          cacheService.set(cacheKey, mappingAudits, 24 * 60 * 60 * 1000); // 24 hours - audit data changes rarely
-          metricsService.recordApiDuration(`auditDiscovery:${stablecoinSymbol}`, Date.now() - startTime);
-          
-          return mappingAudits;
-        } else {
-          console.warn(`⚠️ Mapping table URL exists but returned no audits for ${stablecoinSymbol}`);
+      // 🚀 OPTIMIZATION: Early GitHub detection for curated URLs
+      if (this.isGitHubRepository(knownAuditUrl)) {
+        console.log(`🐙 Curated URL is GitHub repository, using fast GitHub API`);
+        const audits = await this.analyzeGitHubAuditRepository(knownAuditUrl, stablecoinSymbol);
+        
+        if (audits.length > 0) {
+          const duration = Date.now() - startTime;
+          console.log(`✅ SUCCESS: Found ${audits.length} audits from curated GitHub URL in ${duration}ms`);
+          return audits;
         }
-      } catch (error) {
-        console.error(`❌ Failed to retrieve audits from mapping table URL for ${stablecoinSymbol}:`, error);
+      } else {
+        console.log(`🌐 Curated URL is not GitHub, using web scraping`);
+        const audits = await this.analyzeKnownAuditUrl(knownAuditUrl, stablecoinSymbol);
+        
+        if (audits.length > 0) {
+          const duration = Date.now() - startTime;
+          console.log(`✅ SUCCESS: Found ${audits.length} audits from curated URL in ${duration}ms`);
+          return audits;
+        }
       }
+      
+      console.log(`⚠️ Curated URL yielded no results, falling back to search`);
     } else if (isKnownStablecoin(stablecoinSymbol)) {
-      console.log(`📋 ${stablecoinSymbol} is in mapping table but has no audit URL - skipping expensive search`);
-      
-      // Cache empty result to avoid repeated searches for known stablecoins with no audit URLs
-      const emptyResult: AuditInfo[] = [];
-      cacheService.set(cacheKey, emptyResult, 12 * 60 * 60 * 1000); // 12 hours - avoid repeated expensive searches
-      metricsService.recordApiDuration(`auditDiscovery:${stablecoinSymbol}`, Date.now() - startTime);
-      
-      return emptyResult;
+      console.log(`🏆 ${stablecoinSymbol} is in mapping table but has no audit URL - skipping expensive search`);
+      return [];
     }
 
-    try {
-      // 🔄 FALLBACK: Use parallel search for discovery (more expensive)
-      console.log(`🚀 Falling back to parallel audit discovery for ${stablecoinSymbol}`);
+    // 🚀 TIER 2: GitHub repository search (fast API-based)
+    console.log(`🚀 TIER 2: Searching GitHub repositories...`);
+    
+    const searchTasks: Promise<{source: string, audits: AuditInfo[]}>[] = [];
+    
+    // Process GitHub repositories with early detection
+    if (githubRepos && githubRepos.length > 0) {
+      console.log(`🐙 Processing ${githubRepos.length} provided GitHub repositories`);
       
-      // Prepare search tasks
-      const searchTasks: Promise<{source: string, audits: AuditInfo[]}>[] = [];
+      // Separate GitHub URLs from non-GitHub URLs
+      const githubUrls = githubRepos.filter(url => this.isGitHubRepository(url));
+      const nonGithubUrls = githubRepos.filter(url => !this.isGitHubRepository(url));
       
-      // 🚀 SMART EXECUTION ORDER: Try GitHub first (fast), then web crawling (slow)
-      
-      // Step 1: Try GitHub search first (fast GitHub API)
-      if (githubRepos && githubRepos.length > 0) {
-        console.log(`📂 Trying GitHub search first for ${githubRepos.length} repositories`);
-        try {
-          const githubAudits = await this.searchOfficialRepositories(githubRepos, stablecoinSymbol);
-          if (githubAudits.length > 0) {
-            console.log(`🎯 SUCCESS: Found ${githubAudits.length} audits from GitHub - skipping expensive web crawling`);
-            
-            // Cache and return immediately - no need for web crawling
-            cacheService.set(cacheKey, githubAudits, 6 * 60 * 60 * 1000);
-            metricsService.recordApiDuration(`auditDiscovery:${stablecoinSymbol}`, Date.now() - startTime);
-            return githubAudits;
-          } else {
-            console.log(`📂 GitHub search found no audits, will try web crawling`);
-          }
-        } catch (error) {
-          console.error('GitHub search failed:', error);
-        }
-      }
-      
-      // Step 2: Only do expensive web crawling if GitHub didn't find anything
-      if (homepageUrls && homepageUrls.length > 0) {
-        console.log(`🌐 GitHub found no audits, falling back to web crawling for ${homepageUrls.length} URLs`);
+      if (githubUrls.length > 0) {
         searchTasks.push(
-          this.searchDevTechDocs(homepageUrls, stablecoinSymbol)
-            .then(audits => ({ source: 'devdocs', audits }))
-            .catch(error => {
-              console.error('Dev docs search failed:', error);
-              return { source: 'devdocs', audits: [] as AuditInfo[] };
-            })
+          this.searchOfficialRepositories(githubUrls, stablecoinSymbol)
+            .then(audits => ({source: `GitHub Repositories (${githubUrls.length})`, audits}))
         );
       }
       
-      if (searchTasks.length === 0) {
-        console.log(`❌ No search sources available for ${stablecoinSymbol}`);
-        const emptyResult: AuditInfo[] = [];
-        cacheService.set(cacheKey, emptyResult, 6 * 60 * 60 * 1000);
-        metricsService.recordApiDuration(`auditDiscovery:${stablecoinSymbol}`, Date.now() - startTime);
-        return emptyResult;
+      // Handle non-GitHub URLs in provided repos (treat as homepage URLs)
+      if (nonGithubUrls.length > 0) {
+        console.log(`🌐 Found ${nonGithubUrls.length} non-GitHub URLs in repo list, treating as homepage URLs`);
+        if (!homepageUrls) homepageUrls = [];
+        homepageUrls.push(...nonGithubUrls);
       }
+    }
+
+    // 🌐 TIER 3: Web documentation search (slower web scraping)
+    if (homepageUrls && homepageUrls.length > 0) {
+      console.log(`🌐 TIER 3: Searching ${homepageUrls.length} web documentation sites...`);
       
-      // 🎯 PARALLEL EXECUTION WITH EARLY TERMINATION
-      const results = await this.executeParallelSearchWithEarlyTermination(
-        searchTasks, 
-        stablecoinSymbol
+      searchTasks.push(
+        this.searchDevTechDocs(homepageUrls, stablecoinSymbol)
+          .then(audits => ({source: `Documentation Sites (${homepageUrls.length})`, audits}))
       );
-      
-      // 🚀 IMMEDIATE FOCUS: If we found audits, stop all other searches
-      if (results.some(result => result.audits.length > 0)) {
-        console.log(`🎯 Found audits - focusing on successful sources, stopping other searches`);
-      }
-      
-      // Process and finalize results
-      const finalResults = this.finalizeParallelResults(results, stablecoinSymbol);
-      
-      // Log performance metrics
-      this.logParallelPerformance(results, Date.now() - startTime, stablecoinSymbol);
-      
-      // Cache the results
-      cacheService.set(cacheKey, finalResults, 6 * 60 * 60 * 1000); // 6 hours
-      metricsService.recordApiDuration(`auditDiscovery:${stablecoinSymbol}`, Date.now() - startTime);
-      
-      return finalResults;
-      
-    } catch (error) {
-      console.error('Parallel audit discovery error:', error);
-      metricsService.recordApiError(`auditDiscovery:${stablecoinSymbol}`, error);
-      metricsService.recordApiDuration(`auditDiscovery:${stablecoinSymbol}`, Date.now() - startTime);
+    }
+
+    // Execute all search tasks in parallel with early termination
+    if (searchTasks.length === 0) {
+      const duration = Date.now() - startTime;
+      console.log(`❌ No search sources available for ${stablecoinSymbol} after ${duration}ms`);
       return [];
     }
+
+    console.log(`⚡ Executing ${searchTasks.length} search strategies in parallel...`);
+    const results = await this.executeParallelSearchWithEarlyTermination(searchTasks, stablecoinSymbol);
+    
+    // Process and finalize results
+    const finalAudits = this.finalizeParallelResults(results, stablecoinSymbol);
+    
+    const duration = Date.now() - startTime;
+    console.log(`🎯 Audit discovery completed in ${duration}ms: ${finalAudits.length} audits found for ${stablecoinSymbol}`);
+    
+    return finalAudits;
   }
 
   /**
@@ -254,26 +312,12 @@ export class AuditDiscoveryService {
     console.log(`📋 Analyzing curated audit URL: ${auditUrl}`);
     
     try {
-      // 🚀 OPTIMIZATION: Detect GitHub repositories and use fast GitHub API
-      if (this.isGitHubRepository(auditUrl)) {
-        console.log(`🐙 Detected GitHub repository, using fast GitHub API`);
-        const audits = await this.analyzeGitHubAuditRepository(auditUrl, symbol);
-        
-        if (audits.length > 0) {
-          console.log(`✅ Found ${audits.length} audits from GitHub repository`);
-          return audits;
-        } else {
-          console.warn(`⚠️ No audits found in GitHub repository: ${auditUrl}`);
-          return [];
-        }
-      }
-      
-      // 🐌 FALLBACK: Use slower web scraping for non-GitHub URLs
-      console.log(`🌐 Using web scraping for non-GitHub URL`);
+      // 🌐 Use web scraping for non-GitHub URLs (GitHub URLs are handled at main level)
+      console.log(`🌐 Using web scraping for curated URL`);
       const audits = await Promise.race([
         this.scrapeDevTechDocsPage(auditUrl, symbol),
         new Promise<AuditInfo[]>((_, reject) => 
-          setTimeout(() => reject(new Error('Timeout analyzing known audit URL')), 1500) // Reduced from 3s to 1.5s
+          setTimeout(() => reject(new Error('Timeout analyzing known audit URL')), 15000) // 15s timeout for known URLs
         )
       ]);
       
@@ -294,7 +338,8 @@ export class AuditDiscoveryService {
    * 🐙 Check if URL is a GitHub repository
    */
   private isGitHubRepository(url: string): boolean {
-    return /^https?:\/\/github\.com\/[^\/]+\/[^\/]+\/?$/.test(url);
+    // Match github.com URLs with any path (not just root repo URLs)
+    return /^https?:\/\/github\.com\/[^\/]+\/[^\/]+/.test(url);
   }
 
   /**
@@ -330,7 +375,7 @@ export class AuditDiscoveryService {
           this.searchRootAuditFiles(owner, repo, symbol)
         ]).then(results => results.flat()),
         new Promise<AuditInfo[]>((_, reject) => 
-          setTimeout(() => reject(new Error('GitHub API timeout')), 1000) // Reduced from 2s to 1s for GitHub API
+          setTimeout(() => reject(new Error('GitHub API timeout')), 10000) // Increased from 1s to 10s for GitHub API
         )
       ]);
 
@@ -714,12 +759,11 @@ export class AuditDiscoveryService {
           })
         }
         
-        // 3. External documentation domains (common patterns)
+        // 3. External documentation domains (common patterns) - Only project-specific domains
         const rootDomain = domain.split('.').slice(-2).join('.') // get root domain (e.g., openeden.com from app.openeden.com)
         const externalDocPatterns = [
           `${protocol}//docs.${rootDomain}`,
           `${protocol}//${rootDomain.replace('.com', '')}-docs.com`,
-          `${protocol}//${rootDomain.replace('.com', '')}.gitbook.io`,
           `${protocol}//docs.${rootDomain.replace('.com', '')}.org`
         ]
         
@@ -763,11 +807,12 @@ export class AuditDiscoveryService {
       const html = await response.text()
       const externalDocs: string[] = []
       
-      // Look for documentation-related links
+      // Look for documentation-related links - only project-specific docs
       const docLinkPatterns = [
         /href=["']([^"']*(?:docs?|documentation|developer|api|help|guide|wiki)[^"']*)["']/gi,
-        /href=["']([^"']*gitbook[^"']*)["']/gi,
-        /href=["']([^"']*confluence[^"']*)["']/gi
+        /href=["']([^"']*confluence[^"']*)["']/gi,
+        /href=["']([^"']*(?:audit|security|report)[^"']*)["']/gi, // GitBook audit paths
+        /href=["']([^"']*\.pdf[^"']*)["']/gi // Direct PDF links
       ]
       
       for (const pattern of docLinkPatterns) {
@@ -788,7 +833,7 @@ export class AuditDiscoveryService {
         }
       }
       
-      return [...new Set(externalDocs)] // Remove duplicates
+      return Array.from(new Set(externalDocs)) // Remove duplicates
     } catch (error) {
       console.error(`Error discovering external docs from ${homepageUrl}:`, error)
       return []
@@ -854,57 +899,69 @@ export class AuditDiscoveryService {
           }
         }
       } else {
-        // Fall back to pattern-based extraction from HTML
-      const auditPatterns = [
-        // Standard href links
-        /href=["']([^"']*(?:audit|security)[^"']*)["']/gi,
-        // PDF files
-        /href=["']([^"']*\.pdf[^"']*)["']/gi,
-        // Audit firm names in links
-        /href=["']([^"']*(?:trail.of.bits|consensys|openzeppelin|quantstamp|chainsecurity|certik|peckshield|three.sigma|kirill.fedoseev|sherlock)[^"']*)["']/gi,
-      ]
+        // Check if the main URL itself is a documentation page that lists audits
+        console.log(`🔍 Checking if main URL is a documentation page: ${url}`)
+        console.log(`🔍 DEBUG: Calling analyzeDevTechAuditLink with URL: ${url}`)
+        const mainPageAudits = await this.analyzeDevTechAuditLink(url, finalHtml, symbol)
+        console.log(`🔍 DEBUG: analyzeDevTechAuditLink returned ${mainPageAudits.length} audits:`, mainPageAudits)
+        if (mainPageAudits.length > 0) {
+          console.log(`✅ Found ${mainPageAudits.length} audits on main documentation page`)
+          audits.push(...mainPageAudits)
+        } else {
+          console.log(`📋 Main page didn't yield audits, trying pattern-based extraction`)
+          
+          // Fall back to pattern-based extraction from HTML
+          const auditPatterns = [
+            // Standard href links
+            /href=["']([^"']*(?:audit|security)[^"']*)["']/gi,
+            // PDF files
+            /href=["']([^"']*\.pdf[^"']*)["']/gi,
+            // Audit firm names in links
+            /href=["']([^"']*(?:trail.of.bits|consensys|openzeppelin|quantstamp|chainsecurity|certik|peckshield|three.sigma|kirill.fedoseev|sherlock)[^"']*)["']/gi,
+          ]
 
-        // Collect all unique URLs first to avoid duplicates
-        const uniqueUrls = new Set<string>()
+          // Collect all unique URLs first to avoid duplicates
+          const uniqueUrls = new Set<string>()
 
-      // Look for audit-related links and content using patterns
-      let match
-      for (const pattern of auditPatterns) {
-          while ((match = pattern.exec(finalHtml)) !== null) {
-          try {
-            let auditUrl = match[1] || match[0]
-            
-            // Skip if it doesn't look like an audit-related URL
-            if (!this.isAuditRelatedUrl(auditUrl)) {
-              continue
+          // Look for audit-related links and content using patterns
+          let match
+          for (const pattern of auditPatterns) {
+            while ((match = pattern.exec(finalHtml)) !== null) {
+              try {
+                let auditUrl = match[1] || match[0]
+                
+                // Skip if it doesn't look like an audit-related URL
+                if (!this.isAuditRelatedUrl(auditUrl)) {
+                  continue
+                }
+                
+                // Convert relative URLs to absolute
+                if (auditUrl.startsWith('/')) {
+                  const baseUrl = new URL(url).origin
+                  auditUrl = `${baseUrl}${auditUrl}`
+                } else if (!auditUrl.startsWith('http')) {
+                  continue
+                }
+
+                // Add to unique URLs set
+                uniqueUrls.add(auditUrl)
+              } catch (linkError) {
+                continue
+              }
             }
-            
-            // Convert relative URLs to absolute
-            if (auditUrl.startsWith('/')) {
-              const baseUrl = new URL(url).origin
-              auditUrl = `${baseUrl}${auditUrl}`
-            } else if (!auditUrl.startsWith('http')) {
-              continue
-            }
+          }
 
-              // Add to unique URLs set
-              uniqueUrls.add(auditUrl)
+          // Process each unique URL only once
+          for (const auditUrl of Array.from(uniqueUrls)) {
+            try {
+              // Analyze the content to determine if it's a real audit
+              const auditInfo = await this.analyzeDevTechAuditLink(auditUrl, finalHtml, symbol)
+              if (auditInfo.length > 0) {
+                audits.push(...auditInfo)
+              }
             } catch (linkError) {
               continue
             }
-          }
-        }
-
-        // Process each unique URL only once
-        for (const auditUrl of uniqueUrls) {
-          try {
-            // Analyze the content to determine if it's a real audit
-            const auditInfo = await this.analyzeDevTechAuditLink(auditUrl, finalHtml, symbol)
-            if (auditInfo.length > 0) {
-              audits.push(...auditInfo)
-            }
-          } catch (linkError) {
-            continue
           }
         }
       }
@@ -924,25 +981,33 @@ export class AuditDiscoveryService {
    * 🔍 Detect if a site requires JavaScript rendering
    */
   private detectJavaScriptRenderedSite(url: string, html: string): boolean {
-    // Check for known JavaScript-rendered documentation platforms
-    const jsRenderedPlatforms = [
-      'gitbook.io',
-      'docs.usdt0.to' // Specific case for USDT
-
+    // Check for generic JavaScript-rendered documentation platforms
+    const jsRenderedUrlPatterns = [
+      /\.gitbook\.io/i,           // GitBook.io hosted sites
+      /docs\.[^\/]+\.gitbook\.com/i, // Custom GitBook domains
+      /gitbook\.com/i,            // Any GitBook.com site
+      /notion\.site/i,            // Notion sites
+      /gitiles\./i,               // Google Gitiles
+      /docs\.usdt0\.to/i,         // Known specific case
     ]
     
     // Check URL for known platforms
-    const urlRequiresJS = jsRenderedPlatforms.some(platform => url.includes(platform))
+    const urlRequiresJS = jsRenderedUrlPatterns.some(pattern => pattern.test(url))
     
     // Check HTML content for signs of JavaScript rendering
     const htmlRequiresJS = (
       html.includes('window.__NUXT__') ||
       html.includes('window.__NEXT_DATA__') ||
+      html.includes('self.__next_f.push') || // Next.js server-side rendering
       html.includes('react-root') ||
       html.includes('vue-app') ||
-      html.includes('gitbook') ||
+      html.includes('static.gitbook.com') || // GitBook JavaScript indicator
+      html.includes('gitbook-x-prod.appspot.com') || // GitBook assets
+      html.includes('gitbook') || // Generic GitBook indicator
       html.includes('Loading...') ||
       html.includes('Please enable JavaScript') ||
+      html.includes('__webpack_require__') || // Webpack bundled apps
+      html.includes('window.React') || // React apps
       (html.length < 1000 && html.includes('<script')) // Very short HTML with scripts
     )
     
@@ -957,25 +1022,46 @@ export class AuditDiscoveryService {
       'audit', 'security', 'report', 'pdf',
       'trail.of.bits', 'consensys', 'openzeppelin', 
       'quantstamp', 'chainsecurity', 'certik', 'peckshield',
-      'three.sigma', 'kirill.fedoseev', 'sherlock'
+      'three.sigma', 'kirill.fedoseev', 'sherlock', 'cyfrin',
+      'spearbit', 'pashov', 'zellic', 'chaos.labs'
     ]
     
-    return auditKeywords.some(keyword => 
+    // GitBook-specific patterns (common in documentation sites)
+    const gitbookPatterns = [
+      /\/resources\/audit/i,
+      /\/security\/audit/i,
+      /\/audits?\//i,
+      /\/reports?\//i,
+      /\/assessments?\//i,
+      /audit.*report/i,
+      /security.*assessment/i
+    ]
+    
+    // Check standard keywords
+    const hasKeyword = auditKeywords.some(keyword => 
       url.toLowerCase().includes(keyword.toLowerCase())
     )
+    
+    // Check GitBook-style patterns
+    const hasGitBookPattern = gitbookPatterns.some(pattern => 
+      pattern.test(url)
+    )
+    
+    return hasKeyword || hasGitBookPattern
   }
 
   /**
    * 🔍 Detect if a URL points to a documentation page that lists audits vs an actual audit report
    */
   private isDocumentationPage(url: string, html: string): boolean {
-    // URL patterns that indicate documentation pages
+    // URL patterns that indicate documentation pages - removed generic GitBook pattern
     const docUrlPatterns = [
       /docs\.[^\/]+\.[^\/]+/i,  // docs.[domain].[TLD] pattern
       /\/docs\//i,              // /docs/ in path
       /\/documentation\//i,     // /documentation/ in path
       /\/security\//i,          // /security/ in path
-      /gitbook\.io/i           // GitBook documentation
+      /\.gitbook\.io/i,         // GitBook.io sites
+      /gitbook\.com/i,          // GitBook.com sites
     ];
     
     // Check if URL matches documentation patterns
@@ -1008,27 +1094,81 @@ export class AuditDiscoveryService {
     const auditFirms: Array<{firm: string, url?: string}> = []
     const foundFirms = new Set<string>() // Deduplicate firms
     
-    // Known audit firms to look for
+    // Known audit firms to look for - enhanced for GitBook content
     const knownFirms = [
       'Guardian', 'ChainSecurity', 'Paladin', 'Chaos Labs',
       'Trail of Bits', 'ConsenSys', 'OpenZeppelin', 'Quantstamp',
-      'Certik', 'PeckShield', 'SlowMist', 'BlockSec', 'Hacken'
+      'Certik', 'PeckShield', 'SlowMist', 'BlockSec', 'Hacken',
+      'Cyfrin', 'Spearbit', 'Zellic', 'Pashov', 'Sigma Prime'
     ]
     
-    // Look for audit firm names in the HTML
+    // Look for audit firm names in the HTML - enhanced for GitBook patterns
     for (const firm of knownFirms) {
+      // Regular firm name pattern
       const firmPattern = new RegExp(`\\b${firm}\\b`, 'gi')
-      if (firmPattern.test(html) && !foundFirms.has(firm.toLowerCase())) {
+      // GitBook-specific patterns like "Ethena x Zellic" or "Project x Firm"
+      const gitbookPattern = new RegExp(`\\w+\\s+x\\s+${firm}`, 'gi')
+      
+      if ((firmPattern.test(html) || gitbookPattern.test(html)) && !foundFirms.has(firm.toLowerCase())) {
         foundFirms.add(firm.toLowerCase())
         
-        // Try to find a link associated with this firm
-        const linkPattern = new RegExp(`<a[^>]*href=[\"']([^\"']*)[^>]*[^<]*${firm}[^<]*</a>`, 'gi')
-        const linkMatch = linkPattern.exec(html)
-        const firmUrl = linkMatch ? linkMatch[1] : undefined
+        // For GitBook, extract all PDF links first, then match by proximity to firm names
+        let firmUrl: string | undefined
+        
+        // Extract all PDF links from the page
+        const allPdfLinks = []
+        const pdfLinkPattern = /href=["']([^"']*\.pdf[^"']*)/gi
+        let pdfMatch
+        while ((pdfMatch = pdfLinkPattern.exec(html)) !== null) {
+          allPdfLinks.push(pdfMatch[1])
+        }
+        
+        // For each PDF link, check if it's near this firm name in the HTML
+        for (const pdfLink of allPdfLinks) {
+          // Find all occurrences of this PDF link in the HTML
+          const linkPattern = new RegExp(`href=["']${pdfLink.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}["']`, 'gi')
+          let linkMatch
+          while ((linkMatch = linkPattern.exec(html)) !== null) {
+            const linkPosition = linkMatch.index
+            
+            // Check for firm name within 1000 characters before or after the link
+            const searchStart = Math.max(0, linkPosition - 1000)
+            const searchEnd = Math.min(html.length, linkPosition + 1000)
+            const surrounding = html.slice(searchStart, searchEnd)
+            
+            // Look for firm name patterns in the surrounding text
+            const firmPatterns = [
+              new RegExp(`\\b${firm}\\b`, 'i'),
+              new RegExp(`\\w+\\s+x\\s+${firm}`, 'i'), // GitBook "x" pattern
+              new RegExp(`${firm}\\s+x\\s+\\w+`, 'i'), // Reverse "x" pattern
+              new RegExp(`${firm}[\\s\\S]*?audit[\\s\\S]*?report`, 'i'),
+              new RegExp(`audit[\\s\\S]*?report[\\s\\S]*?${firm}`, 'i')
+            ]
+            
+            if (firmPatterns.some(pattern => pattern.test(surrounding))) {
+              // Handle relative URLs
+              if (pdfLink.startsWith('/')) {
+                const urlObj = new URL(baseUrl)
+                firmUrl = `${urlObj.protocol}//${urlObj.host}${pdfLink}`
+              } else if (pdfLink.startsWith('http')) {
+                firmUrl = pdfLink
+              } else {
+                // Relative path - resolve against base URL
+                try {
+                  firmUrl = new URL(pdfLink, baseUrl).href
+                } catch {
+                  firmUrl = pdfLink
+                }
+              }
+              break
+            }
+          }
+          if (firmUrl) break
+        }
         
         auditFirms.push({
           firm,
-          url: firmUrl && firmUrl.startsWith('http') ? firmUrl : undefined
+          url: firmUrl
         })
       }
     }
@@ -1100,13 +1240,15 @@ export class AuditDiscoveryService {
         // Extract actual audit firms from the documentation page
         const auditFirms = this.extractAuditLinksFromDocPage(html, url)
         
+        console.log(`🔍 DEBUG: extractAuditLinksFromDocPage returned ${auditFirms.length} firms:`, auditFirms)
+        
         if (auditFirms.length > 0) {
           console.log(`🔍 Found ${auditFirms.length} audit firms on documentation page:`, auditFirms.map(f => f.firm))
           
           // Return multiple audit entries for each firm found
           return auditFirms.map(firmInfo => ({
             firm: firmInfo.firm,
-            date: this.extractDateFromUrl(firmInfo.url || url) || 'Recent',
+            date: this.extractDateFromUrl(firmInfo.url || url) || new Date().toISOString().split('T')[0],
             outstanding_issues: 0,
             critical_high_issues: 0,
             resolution_status: 'resolved' as const,
@@ -1131,7 +1273,7 @@ export class AuditDiscoveryService {
 
       const auditDate = this.extractDateFromUrl(url) || 
                        this.extractDate(url, url, pageContext) ||
-                       'Unknown Date'
+                       new Date().toISOString().split('T')[0]
 
       return [{
         firm: firmName,
@@ -1200,8 +1342,12 @@ export class AuditDiscoveryService {
    */
   private async findAuditFolders(owner: string, repo: string): Promise<string[]> {
     try {
+      console.log(`🔍 findAuditFolders: Searching ${owner}/${repo}`)
+      
       // Get repository contents
-      const contents = await this.githubClient.get<GitHubRepoContent[]>(`/repos/${owner}/${repo}/contents`)
+      console.log(`📡 Making GitHub API call: /repos/${owner}/${repo}/contents`)
+      const contents = await this.githubApiGet<GitHubRepoContent[]>(`/repos/${owner}/${repo}/contents`)
+      console.log(`📦 GitHub API response: ${contents.length} items found`)
       
       const auditFolders: string[] = []
       const auditFolderPatterns = [
@@ -1212,34 +1358,87 @@ export class AuditDiscoveryService {
         /^reports?$/i
       ]
 
+      // Get all known audit firms for directory detection
+      const allFirms = [...this.AUDIT_FIRMS.tier1, ...this.AUDIT_FIRMS.tier2]
+      
+      // 🚀 IMPROVED: Create flexible patterns for firm names with common variations
+      const firmPatterns = []
+      for (const firm of allFirms) {
+        const normalizedFirm = firm.toLowerCase().replace(/\s+/g, '')
+        
+        // Base pattern
+        firmPatterns.push(new RegExp(`^${normalizedFirm}$`, 'i'))
+        
+        // Handle common variations
+        if (firm === 'OpenZeppelin') {
+          firmPatterns.push(new RegExp(`^openzeppelin$`, 'i'))  // Handle \"Openzeppelin\"
+        }
+        if (firm === 'Trail of Bits') {
+          firmPatterns.push(new RegExp(`^trailofbits$`, 'i'))
+        }
+        if (firm === 'ConsenSys Diligence') {
+          firmPatterns.push(new RegExp(`^consensys$`, 'i'))
+          firmPatterns.push(new RegExp(`^consensysdiligence$`, 'i'))
+        }
+      }
+      
+      console.log(`🏢 Created ${firmPatterns.length} firm patterns for ${allFirms.length} firms`)
+
       for (const item of contents) {
         if (item.type === 'dir') {
+          console.log(`🧪 Checking directory: ${item.name}`)
+          
+          // Check for standard audit folder names
+          let matched = false
           for (const pattern of auditFolderPatterns) {
             if (pattern.test(item.name)) {
+              console.log(`✅ Standard audit folder match: ${item.name}`)
               auditFolders.push(item.path)
+              matched = true
               break
             }
           }
+          
+          // 🚀 NEW: Check for audit firm-named folders
+          if (!matched) {
+            for (const firmPattern of firmPatterns) {
+              if (firmPattern.test(item.name)) {
+                console.log(`🏢 Found audit firm folder: ${item.name}`)
+                auditFolders.push(item.path)
+                matched = true
+                break
+              }
+            }
+          }
+          
+          if (!matched) {
+            console.log(`❌ Directory '${item.name}' did not match any patterns`)
+          }
+        } else {
+          console.log(`📄 Skipping file: ${item.name}`)
         }
       }
+
+      console.log(`📂 Found ${auditFolders.length} audit folders: [${auditFolders.join(', ')}]`)
 
       // Also check docs folder for audit subdirectories
       try {
-        const docsContents = await this.githubClient.get<GitHubRepoContent[]>(`/repos/${owner}/${repo}/contents/docs`)
+        console.log(`📚 Checking docs folder for additional audit directories...`)
+        const docsContents = await this.githubApiGet<GitHubRepoContent[]>(`/repos/${owner}/${repo}/contents/docs`)
         for (const item of docsContents) {
           if (item.type === 'dir' && /audit/i.test(item.name)) {
-            auditFolders.push(`docs/${item.name}`)
+            console.log(`✅ Found audit folder in docs: ${item.path}`)
+            auditFolders.push(item.path)
           }
         }
-      } catch {
-        // Docs folder doesn't exist, that's fine
+      } catch (error) {
+        console.log(`ℹ️ No docs folder found or accessible: ${error}`)
       }
 
-      console.log(`📂 Found audit folders in ${owner}/${repo}:`, auditFolders)
+      console.log(`🎯 Final audit folders found: ${auditFolders.length}`)
       return auditFolders
-
     } catch (error) {
-      console.error(`Error finding audit folders in ${owner}/${repo}:`, error)
+      console.error(`❌ Error finding audit folders in ${owner}/${repo}:`, error)
       return []
     }
   }
@@ -1249,21 +1448,36 @@ export class AuditDiscoveryService {
    */
   private async searchAuditFolder(owner: string, repo: string, folderPath: string, symbol: string): Promise<AuditInfo[]> {
     try {
-      const contents = await this.githubClient.get<GitHubRepoContent[]>(`/repos/${owner}/${repo}/contents/${folderPath}`)
+      console.log(`🔍 searchAuditFolder: ${owner}/${repo}/${folderPath} for symbol ${symbol}`)
+      const contents = await this.githubApiGet<GitHubRepoContent[]>(`/repos/${owner}/${repo}/contents/${folderPath}`)
+      console.log(`📁 Found ${contents.length} items in ${folderPath}`)
+      
       const audits: AuditInfo[] = []
 
       for (const item of contents) {
-        if (item.type === 'file' && this.isRelevantAuditFile(item.name, symbol)) {
-          const auditInfo = await this.extractAuditFromRepoFile(owner, repo, item)
-          if (auditInfo) {
-            audits.push(auditInfo)
+        console.log(`📄 Processing ${item.name} (type: ${item.type})`)
+        
+        if (item.type === 'file') {
+          const isRelevant = this.isRelevantAuditFile(item.name, symbol)
+          console.log(`🔍 File ${item.name} relevant for ${symbol}: ${isRelevant}`)
+          
+          if (isRelevant) {
+            console.log(`✅ Extracting audit info from ${item.name}`)
+            const auditInfo = await this.extractAuditFromRepoFile(owner, repo, item)
+            if (auditInfo) {
+              console.log(`✅ Successfully extracted audit: ${auditInfo.firm} - ${auditInfo.date}`)
+              audits.push(auditInfo)
+            } else {
+              console.log(`❌ Failed to extract audit info from ${item.name}`)
+            }
           }
         }
       }
 
+      console.log(`📊 searchAuditFolder result: ${audits.length} audits found in ${folderPath}`)
       return audits
     } catch (error) {
-      console.error(`Error searching audit folder ${folderPath}:`, error)
+      console.error(`❌ Error searching audit folder ${folderPath}:`, error)
       return []
     }
   }
@@ -1273,7 +1487,7 @@ export class AuditDiscoveryService {
    */
   private async searchRootAuditFiles(owner: string, repo: string, symbol: string): Promise<AuditInfo[]> {
     try {
-      const contents = await this.githubClient.get<GitHubRepoContent[]>(`/repos/${owner}/${repo}/contents`)
+      const contents = await this.githubApiGet<GitHubRepoContent[]>(`/repos/${owner}/${repo}/contents`)
       const audits: AuditInfo[] = []
 
       for (const item of contents) {
@@ -1293,11 +1507,29 @@ export class AuditDiscoveryService {
   }
 
   /**
-   * 📄 Check if file is relevant to the specific stablecoin
+   * 🔄 Normalize symbol for matching (case-insensitive + symbol mappings)
+   */
+  private normalizeSymbolForMatching(symbol: string): string[] {
+    const baseSymbol = symbol.toUpperCase().trim()
+    
+    // 🚀 USDT → USDT0 mapping
+    if (baseSymbol === 'USDT') {
+      return ['USDT', 'USDT0']  // Search for both variants
+    }
+    
+    // 🚀 FRAX → FRXUSD mapping
+    if (baseSymbol === 'FRAX') {
+      return ['FRAX', 'FRXUSD']  // Search for both variants
+    }
+    
+    return [baseSymbol]  // All other symbols remain unchanged
+  }
+
+  /**
+   * 📄 Check if file is relevant to the specific stablecoin (CASE-INSENSITIVE)
    */
   private isRelevantAuditFile(filename: string, symbol: string): boolean {
     const lowerFilename = filename.toLowerCase()
-    const lowerSymbol = symbol.toLowerCase()
 
     // Must be an audit file format
     const auditFileTypes = ['.pdf', '.md', '.txt', '.doc', '.docx']
@@ -1311,15 +1543,19 @@ export class AuditDiscoveryService {
     
     if (!hasAuditKeyword) return false
 
-    // Must be relevant to the specific stablecoin (or general if no specific files)
-    const isSpecific = lowerFilename.includes(lowerSymbol) || 
-                      lowerFilename.includes(symbol.toLowerCase().replace('usd', '')) ||
-                      lowerFilename.includes('general') || 
-                      lowerFilename.includes('protocol') ||
-                      lowerFilename.includes('smart') ||
-                      lowerFilename.includes('contract')
+    // 🚀 CASE-INSENSITIVE symbol matching with symbol mappings (USDT→USDT0, FRAX→FRXUSD)
+    const symbolVariants = this.normalizeSymbolForMatching(symbol)
+    const hasSymbolMatch = symbolVariants.some(variant => 
+      lowerFilename.includes(variant.toLowerCase())
+    )
 
-    return isSpecific
+    if (!hasSymbolMatch) {
+      console.log(`❌ File ${filename} doesn't contain symbol variants: ${symbolVariants.join(', ')}`)
+      return false
+    }
+
+    console.log(`✅ File ${filename} matches symbol ${symbol} (variants: ${symbolVariants.join(', ')})`)
+    return true
   }
 
   /**
@@ -1327,6 +1563,8 @@ export class AuditDiscoveryService {
    */
   private async extractAuditFromRepoFile(owner: string, repo: string, item: GitHubRepoContent): Promise<AuditInfo | null> {
     try {
+      console.log(`🔍 extractAuditFromRepoFile: Processing ${item.name}`)
+      
       // Try to get file content if it's text-based
       let content = ''
       
@@ -1334,26 +1572,51 @@ export class AuditDiscoveryService {
         try {
           const response = await fetch(item.download_url)
           content = await response.text()
+          console.log(`📄 Downloaded content for ${item.name}: ${content.length} characters`)
         } catch (error) {
           console.error('Error fetching file content:', error)
         }
+      } else {
+        console.log(`📄 Skipping content download for ${item.name} (not text-based or no download URL)`)
       }
 
       // Extract firm name
       const firm = this.extractFirmName(item.name, item.path, content) || this.inferFirmFromRepo(owner)
-      if (!firm) return null
+      console.log(`🏢 Extracted firm for ${item.name}: ${firm}`)
+      if (!firm) {
+        console.log(`❌ No firm found for ${item.name}`)
+        return null
+      }
 
-      // Extract date (from filename, path, or content)
-      const date = this.extractDate(item.name, item.path, content)
-      if (!date) return null
+      // Get Git commit date for this file as fallback
+      let gitCommitDate: string | null = null
+      try {
+        const commits = await this.githubApiGet<any[]>(`/repos/${owner}/${repo}/commits?path=${encodeURIComponent(item.path)}&per_page=1`)
+        if (commits && commits.length > 0) {
+          gitCommitDate = commits[0].commit.committer.date
+          console.log(`📅 Git commit date for ${item.name}: ${gitCommitDate}`)
+        }
+      } catch (error) {
+        console.log(`⚠️ Could not fetch Git commit date for ${item.name}:`, error)
+      }
+
+      // Extract date (from filename, path, content, or Git commit)
+      const date = await this.extractDate(item.name, item.path, content, gitCommitDate)
+      console.log(`📅 Final extracted date for ${item.name}: ${date}`)
+      if (!date) {
+        console.log(`❌ No date found for ${item.name}`)
+        return null
+      }
 
       // Analyze issues
-      const { criticalHigh, outstanding } = this.analyzeIssues(content)
+      const { criticalHigh, outstanding, resolved } = this.analyzeIssues(content)
+      console.log(`🔍 Issues analysis for ${item.name}: critical=${criticalHigh}, outstanding=${outstanding}, resolved=${resolved}`)
 
       // Determine if it's a top tier firm
       const isTopTier = this.isTopTierFirm(firm)
+      console.log(`⭐ Top tier firm for ${item.name}: ${isTopTier}`)
 
-      return {
+      const auditInfo: AuditInfo = {
         firm,
         date,
         outstanding_issues: outstanding,
@@ -1362,8 +1625,11 @@ export class AuditDiscoveryService {
         report_url: item.html_url,
         is_top_tier: isTopTier
       }
+      
+      console.log(`✅ Successfully created audit info for ${item.name}:`, auditInfo)
+      return auditInfo
     } catch (error) {
-      console.error('Error extracting audit info from repo file:', error)
+      console.error(`❌ Error extracting audit info from repo file ${item.name}:`, error)
       return null
     }
   }
@@ -1469,7 +1735,7 @@ export class AuditDiscoveryService {
   /**
    * Extract date from filename, path, or content
    */
-  private extractDate(filename: string, path: string, content: string): string | null {
+  private extractDate(filename: string, path: string, content: string, gitCommitDate?: string | null): string | null {
     // Common date patterns
     const datePatterns = [
       /20\d{2}-\d{2}-\d{2}/,  // YYYY-MM-DD
@@ -1508,7 +1774,14 @@ export class AuditDiscoveryService {
       }
     }
 
+    // Use Git commit date as fallback if available
+    if (gitCommitDate) {
+      console.log('📅 Using Git commit date as fallback:', gitCommitDate)
+      return new Date(gitCommitDate).toISOString().split('T')[0]
+    }
+
     // Default to current date if no date found
+    console.log('⚠️ No date found in filename, path, content, or Git commit. Using current date.')
     return new Date().toISOString().split('T')[0]
   }
 
@@ -1548,14 +1821,15 @@ export class AuditDiscoveryService {
   }
 
   /**
-   * Analyze content for security issues
+   * Analyze content for security issues with resolution tracking
    */
-  private analyzeIssues(content: string): { criticalHigh: number; outstanding: number } {
+  private analyzeIssues(content: string): { criticalHigh: number; outstanding: number; resolved: number } {
     let criticalHigh = 0
     let outstanding = 0
+    let resolved = 0
 
     if (!content) {
-      return { criticalHigh: 0, outstanding: 0 }
+      return { criticalHigh: 0, outstanding: 0, resolved: 0 }
     }
 
     const lowerContent = content.toLowerCase()
@@ -1566,13 +1840,38 @@ export class AuditDiscoveryService {
       criticalHigh += matches
     }
 
+    // Look for resolved critical/high issues patterns
+    const resolvedPatterns = [
+      /critical.*resolved/gi,
+      /high.*resolved/gi,
+      /vulnerability.*fixed/gi,
+      /exploit.*mitigated/gi,
+      /issue.*resolved/gi,
+      /fixed.*critical/gi,
+      /fixed.*high/gi,
+      /resolved.*vulnerability/gi,
+      /mitigated.*exploit/gi,
+      /addressed.*critical/gi,
+      /addressed.*high/gi
+    ]
+
+    for (const pattern of resolvedPatterns) {
+      const matches = content.match(pattern)
+      if (matches) {
+        resolved += matches.length
+      }
+    }
+
     // Look for specific patterns indicating outstanding issues
     const outstandingPatterns = [
       /unresolved/gi,
       /not fixed/gi,
       /pending/gi,
       /todo/gi,
-      /issue.*remains/gi
+      /issue.*remains/gi,
+      /critical.*open/gi,
+      /high.*open/gi,
+      /vulnerability.*open/gi
     ]
 
     for (const pattern of outstandingPatterns) {
@@ -1584,7 +1883,8 @@ export class AuditDiscoveryService {
 
     return { 
       criticalHigh: Math.min(criticalHigh, 20), // Cap at reasonable number
-      outstanding: Math.min(outstanding, 10)
+      outstanding: Math.min(outstanding, 10),
+      resolved: Math.min(resolved, 20) // Cap resolved issues too
     }
   }
 
