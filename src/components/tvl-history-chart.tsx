@@ -45,7 +45,7 @@ const TIME_RANGES = [
   { label: '90D', days: 90 }
 ]
 
-export function TVLHistoryChart({ data, title = "TVL History by Blockchain" }: TVLHistoryChartProps) {
+export function TVLHistoryChart({ data, title = "Trading volume by Blockchain" }: TVLHistoryChartProps) {
   const [selectedRange, setSelectedRange] = useState(30)
 
   // Transform data for Recharts format
@@ -99,7 +99,7 @@ export function TVLHistoryChart({ data, title = "TVL History by Blockchain" }: T
               style={{ backgroundColor: entry.color }}
             />
             <span className="text-sm text-gray-700 capitalize">
-              {entry.dataKey}: ${entry.value ? (entry.value / 1_000_000).toFixed(2) : '0'}M
+              {entry.dataKey}: ${entry.value ? (entry.value / 1_000).toFixed(1) : '0'}K
             </span>
           </div>
         ))}
@@ -159,7 +159,7 @@ export function TVLHistoryChart({ data, title = "TVL History by Blockchain" }: T
                 fontSize={12}
                 tickLine={false}
                 axisLine={false}
-                tickFormatter={(value) => `$${(value / 1_000_000).toFixed(0)}M`}
+                tickFormatter={(value) => `$${(value / 1_000).toFixed(0)}K`}
               />
               <Tooltip content={<CustomTooltip />} />
               <Legend 

@@ -30,9 +30,9 @@ function ShareButton({ ticker }: ShareButtonProps) {
   }
 
   return (
-    <Button variant="outline" size="sm" onClick={handleShare}>
-      <Share2 className="h-4 w-4 mr-2" />
-      Share
+    <Button variant="outline" size="sm" onClick={handleShare} className="text-xs sm:text-sm">
+      <Share2 className="h-4 w-4 mr-1 sm:mr-2" />
+      <span className="hidden xs:inline">Share</span>
     </Button>
   )
 }
@@ -47,13 +47,14 @@ export function DashboardLayout({ children, ticker }: DashboardLayoutProps) {
     <div className="min-h-screen bg-background">
       {/* Header Navigation */}
       <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-        <div className="container flex h-14 items-center justify-between">
+        <div className="container mx-auto px-2 sm:px-4 md:px-6 flex h-14 items-center justify-between">
           {/* Left: Back Navigation */}
-          <div className="flex items-center space-x-4">
+          <div className="flex items-center space-x-2 sm:space-x-4 min-w-0 flex-1">
             <Link href="/">
-              <Button variant="ghost" size="sm">
-                <ArrowLeft className="h-4 w-4 mr-2" />
-                Back to Search
+              <Button variant="ghost" size="sm" className="text-xs sm:text-sm">
+                <ArrowLeft className="h-4 w-4 mr-1 sm:mr-2" />
+                <span className="hidden xs:inline">Back to Search</span>
+                <span className="xs:hidden">Back</span>
               </Button>
             </Link>
             
@@ -66,17 +67,17 @@ export function DashboardLayout({ children, ticker }: DashboardLayoutProps) {
           </div>
 
           {/* Center: Current Stablecoin */}
-          <div className="flex items-center space-x-2">
-            <span className="text-sm text-muted-foreground">
+          <div className="flex items-center space-x-1 sm:space-x-2 flex-shrink-0">
+            <span className="text-xs sm:text-sm text-muted-foreground hidden xs:inline">
               Analyzing
             </span>
-            <span className="font-semibold uppercase">
+            <span className="font-semibold uppercase text-sm sm:text-base">
               {ticker}
             </span>
           </div>
 
           {/* Right: Actions */}
-          <div className="flex items-center space-x-2">
+          <div className="flex items-center space-x-1 sm:space-x-2 min-w-0 flex-1 justify-end">
             <ShareButton ticker={ticker} />
             <ThemeToggle />
           </div>
@@ -84,7 +85,7 @@ export function DashboardLayout({ children, ticker }: DashboardLayoutProps) {
       </header>
 
       {/* Main Content */}
-      <main className="container mx-auto px-4 py-8">
+      <main className="container mx-auto px-2 sm:px-4 md:px-6 py-8">
         {children}
       </main>
     </div>

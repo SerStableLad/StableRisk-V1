@@ -553,18 +553,9 @@ export function LiquiditySection({ ticker, data: propData }: LiquiditySectionPro
       {/* Liquidity Overview */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center justify-between">
-            <div className="flex items-center space-x-2">
-              <Waves className="h-5 w-5" />
-              <span>Liquidity Overview</span>
-            </div>
-            <div className="flex items-center space-x-2">
-              <Badge variant="default" className={`${getLiquidityScoreColor(data.liquidity_score)} bg-opacity-10`}>
-                <Target className="h-3 w-3 mr-1" />
-                Score: {data.liquidity_score}/100
-              </Badge>
-              {getRiskLevelBadge(data.liquidation_risk.risk_level)}
-            </div>
+          <CardTitle className="flex items-center space-x-2">
+            <Waves className="h-5 w-5" />
+            <span>Liquidity Overview</span>
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -718,19 +709,11 @@ export function LiquiditySection({ ticker, data: propData }: LiquiditySectionPro
                       </p>
                     </div>
                   </div>
-                  <div className="flex items-center space-x-2">
-                    {getExchangeTypeBadge(exchange.type)}
-                    {exchange.is_active ? (
-                      <Badge variant="default" className="bg-green-100 text-green-800">
-                        <Zap className="h-3 w-3 mr-1" />
-                        Active
-                      </Badge>
-                    ) : (
-                      <Badge variant="destructive">
-                        <XCircle className="h-3 w-3 mr-1" />
-                        Inactive
-                      </Badge>
-                    )}
+                  <div className="text-right">
+                    <p className="text-sm text-muted-foreground">{exchange.type}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {exchange.is_active ? 'Active' : 'Inactive'}
+                    </p>
                   </div>
                 </div>
                 
@@ -842,19 +825,11 @@ export function LiquiditySection({ ticker, data: propData }: LiquiditySectionPro
                         </p>
                       </div>
                     </div>
-                    <div className="flex items-center space-x-2">
-                      {getRiskLevelBadge(pool.risk_level)}
-                      {pool.is_active ? (
-                        <Badge variant="default" className="bg-green-100 text-green-800">
-                          <Activity className="h-3 w-3 mr-1" />
-                          Active
-                        </Badge>
-                      ) : (
-                        <Badge variant="destructive">
-                          <XCircle className="h-3 w-3 mr-1" />
-                          Inactive
-                        </Badge>
-                      )}
+                    <div className="text-right">
+                      <p className="text-sm text-muted-foreground">{pool.risk_level} risk</p>
+                      <p className="text-xs text-muted-foreground">
+                        {pool.is_active ? 'Active' : 'Inactive'}
+                      </p>
                     </div>
                   </div>
                   

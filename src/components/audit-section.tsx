@@ -315,19 +315,10 @@ export function AuditSection({ ticker, data: propData }: AuditSectionProps) {
       {/* Audit Overview */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center justify-between">
+          <CardTitle className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
             <div className="flex items-center space-x-2">
               <Shield className="h-5 w-5" />
               <span>Audit Overview</span>
-            </div>
-            <div className="flex items-center space-x-2">
-              {getFrequencyBadge(data.audit_frequency)}
-              {data.has_continuous_monitoring && (
-                <Badge variant="default" className="bg-green-100 text-green-800">
-                  <CheckCircle className="h-3 w-3 mr-1" />
-                  Continuous Monitoring
-                </Badge>
-              )}
             </div>
           </CardTitle>
         </CardHeader>
@@ -403,7 +394,7 @@ export function AuditSection({ ticker, data: propData }: AuditSectionProps) {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {data.recent_audits.map((audit, index) => (
               <div key={index} className="border rounded-lg p-4">
-                <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center mb-4">
                   <div className="flex items-center space-x-3">
                     <Building className="h-5 w-5 text-muted-foreground" />
                     <div>
@@ -412,20 +403,6 @@ export function AuditSection({ ticker, data: propData }: AuditSectionProps) {
                         {audit.methodology}
                       </p>
                     </div>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    {getAuditTypeBadge(audit.audit_type)}
-                    {audit.is_verified ? (
-                      <Badge variant="default" className="bg-green-100 text-green-800">
-                        <CheckCircle className="h-3 w-3 mr-1" />
-                        Verified
-                      </Badge>
-                    ) : (
-                      <Badge variant="outline">
-                        <AlertTriangle className="h-3 w-3 mr-1" />
-                        Unverified
-                      </Badge>
-                    )}
                   </div>
                 </div>
                 
@@ -448,13 +425,9 @@ export function AuditSection({ ticker, data: propData }: AuditSectionProps) {
                 
                 <div className="mb-4">
                   <p className="text-sm text-muted-foreground mb-2">Coverage Areas</p>
-                  <div className="flex flex-wrap gap-2">
-                    {audit.coverage_areas.map((area, areaIndex) => (
-                      <Badge key={areaIndex} variant="outline" className="text-xs">
-                        {area}
-                      </Badge>
-                    ))}
-                  </div>
+                  <p className="text-sm">
+                    {audit.coverage_areas.join(', ')}
+                  </p>
                 </div>
                 
                 {audit.findings.length > 0 && (
@@ -463,16 +436,14 @@ export function AuditSection({ ticker, data: propData }: AuditSectionProps) {
                     <div className="space-y-2">
                       {audit.findings.map((finding, findingIndex) => (
                         <div key={findingIndex} className="border rounded p-3 text-sm">
-                          <div className="flex items-center justify-between mb-2">
-                            <div className="flex items-center space-x-2">
-                              <Badge variant="outline" className={getSeverityColor(finding.severity)}>
-                                {finding.severity.toUpperCase()}
-                              </Badge>
-                              <span className="font-medium">{finding.title}</span>
+                          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-2">
+                            <div className="flex items-center space-x-2 min-w-0 flex-1">
+                              <span className="font-medium truncate">{finding.title}</span>
+                              <span className="text-xs text-muted-foreground">({finding.severity})</span>
                             </div>
-                            <div className="flex items-center space-x-1">
+                            <div className="flex items-center space-x-1 flex-shrink-0">
                               {getStatusIcon(finding.status)}
-                              <span className="text-xs text-muted-foreground capitalize">
+                              <span className="text-xs text-muted-foreground capitalize whitespace-nowrap">
                                 {finding.status.replace('_', ' ')}
                               </span>
                             </div>
@@ -490,7 +461,7 @@ export function AuditSection({ ticker, data: propData }: AuditSectionProps) {
                   </div>
                 )}
                 
-                <div className="flex items-center justify-between">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                   <div className="text-sm text-muted-foreground">
                     {Math.floor((Date.now() - new Date(audit.audit_date).getTime()) / (1000 * 60 * 60 * 24))} days ago
                   </div>
@@ -499,10 +470,10 @@ export function AuditSection({ ticker, data: propData }: AuditSectionProps) {
                       variant="outline"
                       size="sm"
                       onClick={() => window.open(audit.report_url, '_blank', 'noopener,noreferrer')}
-                      className="flex items-center space-x-2"
+                      className="flex items-center space-x-1.5 text-xs"
                     >
                       <FileText className="h-3 w-3" />
-                      <span>View Report</span>
+                      <span className="hidden xs:inline">View </span>Report
                       <ExternalLink className="h-3 w-3" />
                     </Button>
                   )}

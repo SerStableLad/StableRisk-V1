@@ -214,25 +214,9 @@ export function TransparencySection({ ticker, data: propData }: TransparencySect
       {/* Main Transparency Dashboard */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center justify-between">
-            <div className="flex items-center space-x-2">
-              <Eye className="h-5 w-5" />
-              <span>Transparency Dashboard</span>
-            </div>
-            <div className="flex items-center space-x-2">
-              {data.has_proof_of_reserves ? (
-                <Badge variant="default" className="bg-green-100 text-green-800">
-                  <CheckCircle className="h-3 w-3 mr-1" />
-                  Verified Reserves
-                </Badge>
-              ) : (
-                <Badge variant="destructive">
-                  <XCircle className="h-3 w-3 mr-1" />
-                  Unverified
-                </Badge>
-              )}
-              {getUpdateFrequencyBadge(data.update_frequency)}
-            </div>
+          <CardTitle className="flex items-center space-x-2">
+            <Eye className="h-5 w-5" />
+            <span>Transparency Dashboard</span>
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -304,19 +288,11 @@ export function TransparencySection({ ticker, data: propData }: TransparencySect
                       </p>
                     </div>
                   </div>
-                  <div className="flex items-center space-x-2">
-                    {getProviderTypeBadge(provider.type)}
-                    {provider.is_verified ? (
-                      <Badge variant="default" className="bg-green-100 text-green-800">
-                        <CheckCircle className="h-3 w-3 mr-1" />
-                        Verified
-                      </Badge>
-                    ) : (
-                      <Badge variant="outline">
-                        <AlertTriangle className="h-3 w-3 mr-1" />
-                        Unverified
-                      </Badge>
-                    )}
+                  <div className="text-right">
+                    <p className="text-sm text-muted-foreground">{provider.type.replace('_', ' ')}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {provider.is_verified ? 'Verified' : 'Unverified'}
+                    </p>
                   </div>
                 </div>
                 
