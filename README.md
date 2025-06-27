@@ -337,5 +337,6 @@ src/components/
 ---
 
 **Built with ❤️ by SerStableLad**
+![CodeRabbit Pull Request Reviews](https://img.shields.io/coderabbit/prs/github/SerStableLad/StableRisk-V1?utm_source=oss&utm_medium=github&utm_campaign=SerStableLad%2FStableRisk-V1&labelColor=171717&color=FF570A&link=https%3A%2F%2Fcoderabbit.ai&label=CodeRabbit+Reviews)
 
 *For detailed technical documentation, see [context.md](context.md)* 
