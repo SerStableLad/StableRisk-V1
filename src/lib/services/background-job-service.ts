@@ -3,7 +3,11 @@ export interface Job {
   type: 'audit_discovery' | 'transparency_discovery' | 'detailed_analysis'
   ticker: string
   status: 'pending' | 'processing' | 'completed' | 'failed'
-  data?: any
+  data?: {
+    info?: any // TODO: Define proper StablecoinInfo type
+    auditFolderUrl?: string
+    // Add other specific data properties as needed
+  }
   error?: string
   createdAt: Date
   startedAt?: Date
@@ -13,7 +17,13 @@ export interface Job {
 
 export interface JobResult {
   success: boolean
-  data?: any
+  data?: {
+    audits?: any[] // TODO: Define proper Audit type
+    transparency?: any // TODO: Define proper TransparencyData type
+    detailedAnalysis?: string
+    discoveredAt?: string
+    analyzedAt?: string
+  }
   error?: string
 }
 
