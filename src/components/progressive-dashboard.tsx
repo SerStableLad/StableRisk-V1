@@ -17,25 +17,41 @@ export default function ProgressiveDashboard({ ticker }: ProgressiveDashboardPro
   const [loadTime, setLoadTime] = useState<number | null>(null)
 
   useEffect(() => {
+    const abortController = new AbortController()
+
     const fetchData = async () => {
       try {
         const start = performance.now()
-        const response = await fetch(`/api/stablecoin/${ticker}/progressive`)
+        const response = await fetch(`/api/stablecoin/${ticker}/progressive`, {
+          signal: abortController.signal
+        })
+
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`)
+        }
+
         const result = await response.json()
         const time = performance.now() - start
         setLoadTime(time)
-        
+
         if (result.success) {
           setData(result.data)
         } else {
           setError(result.error || 'Failed to load data')
         }
-      } catch (err: any) {
+      } catch (err) {
+        if (err instanceof Error && err.name === 'AbortError') {
+          return // Request was cancelled
+        }
         setError(err.message)
       }
     }
 
     fetchData()
+
+    return () => {
+      abortController.abort()
+    }
   }, [ticker])
 
   if (error) {
