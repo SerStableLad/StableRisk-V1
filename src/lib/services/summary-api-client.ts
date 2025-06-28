@@ -96,7 +96,7 @@ class SummaryApiClient {
           result[coinId] = {
             current_price: coinData.usd,
             price_change_24h: coinData.usd_24h_change || 0,
-            price_change_percentage_24h: coinData.usd_24h_change || 0,
+            price_change_percentage_24h: coinData.usd_24h_change_percentage || 0,
             price_change_percentage_7d: coinData.usd_7d_change || 0,
             last_updated: new Date(coinData.last_updated_at * 1000).toISOString()
           }
