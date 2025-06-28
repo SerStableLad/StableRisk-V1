@@ -340,6 +340,24 @@ class DynamicContentExtractor extends ExtractionMethod {
         const tables = document.querySelectorAll('table')
         const allocations: AssetAllocation[] = []
         
+        // Define parsing functions within browser context
+        const parseAmount = (text: string): number => {
+          const match = text.match(/\$?([\d,]+(?:\.\d+)?)\s*(M|B|million|billion)?/i)
+          if (!match) return 0
+          
+          const amount = parseFloat(match[1].replace(/,/g, ''))
+          const unit = match[2]?.toLowerCase()
+          
+          if (unit?.includes('b')) return amount * 1e9
+          if (unit?.includes('m')) return amount * 1e6
+          return amount
+        }
+        
+        const parsePercentage = (text: string): number | null => {
+          const match = text.match(/([\d.]+)%/)
+          return match ? parseFloat(match[1]) : null
+        }
+        
         tables.forEach(table => {
           const rows = table.querySelectorAll('tr')
           rows.forEach(row => {
@@ -352,8 +370,8 @@ class DynamicContentExtractor extends ExtractionMethod {
               const amountMatch = text.find(t => /\$[\d,.]+(M|B|million|billion)?|\d+\.\d+%/i.test(t))
               
               if (assetMatch && amountMatch) {
-                const amount = this.parseAmount(amountMatch)
-                const percentage = this.parsePercentage(amountMatch) || 0
+                const amount = parseAmount(amountMatch)
+                const percentage = parsePercentage(amountMatch) || 0
                 
                 allocations.push({
                   asset: assetMatch,
@@ -368,13 +386,6 @@ class DynamicContentExtractor extends ExtractionMethod {
         
         return allocations.length > 0 ? { allocations } : null
       })
-      
-      return tableData
-    } catch (error) {
-      console.warn('Table extraction failed:', error)
-      return null
-    }
-  }
 
   private async extractFromText(page: Page): Promise<Partial<ExtractedData> | null> {
     try {
