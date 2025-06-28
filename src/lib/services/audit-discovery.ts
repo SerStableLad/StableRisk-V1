@@ -1015,6 +1015,8 @@ export class AuditDiscoveryService {
 
       // Deduplicate audits at the method level as well
       const deduplicatedAudits = this.deduplicateAudits(audits)
+      } catch (linkError) {
+      }
       console.log(`🔍 Scraped ${normalizedUrl} (original: ${url}): ${audits.length} → ${deduplicatedAudits.length} unique audits`)
       
       // Cache the results for this normalized URL
