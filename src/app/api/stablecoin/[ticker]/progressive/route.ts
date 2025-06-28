@@ -148,7 +148,9 @@ export async function GET(
     // Trigger audit discovery if needed
     if (loadingStatus.audit === 'loading') {
       const auditFolderUrl = getKnownAuditFolderUrl(ticker)
-      if (auditFolderUrl && !backgroundJobService.hasActiveJobsForTicker(ticker)) {
+      if (auditFolderUrl && 
+          !backgroundJobService.hasActiveJobOfType(ticker, 'audit_discovery') &&
+          !backgroundJobService.hasRecentlyCompletedJob(ticker, 'audit_discovery', 5)) {
         const auditJobId = backgroundJobService.addJob(
           'audit_discovery',
           ticker,
@@ -157,12 +159,16 @@ export async function GET(
         )
         jobIds.push(auditJobId)
         console.log(`🔄 Triggered audit discovery job: ${auditJobId}`)
+      } else if (backgroundJobService.hasRecentlyCompletedJob(ticker, 'audit_discovery', 5)) {
+        console.log(`⏭️ Skipping audit discovery - job completed recently for ${ticker}`)
       }
     }
 
     // Trigger transparency discovery if needed  
     if (loadingStatus.transparency === 'loading') {
-      if (!isKnownStablecoin(ticker) && !backgroundJobService.hasActiveJobsForTicker(ticker)) {
+      if (!isKnownStablecoin(ticker) && 
+          !backgroundJobService.hasActiveJobOfType(ticker, 'transparency_discovery') &&
+          !backgroundJobService.hasRecentlyCompletedJob(ticker, 'transparency_discovery', 5)) {
         const transparencyJobId = backgroundJobService.addJob(
           'transparency_discovery',
           ticker,
@@ -171,6 +177,8 @@ export async function GET(
         )
         jobIds.push(transparencyJobId)
         console.log(`🔄 Triggered transparency discovery job: ${transparencyJobId}`)
+      } else if (backgroundJobService.hasRecentlyCompletedJob(ticker, 'transparency_discovery', 5)) {
+        console.log(`⏭️ Skipping transparency discovery - job completed recently for ${ticker}`)
       }
     }
 

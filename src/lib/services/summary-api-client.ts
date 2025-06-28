@@ -26,7 +26,7 @@ export interface PriceSummary {
 }
 
 class SummaryApiClient {
-  private baseUrl = 'https://api.coingecko.com/api/v3'
+  private baseUrl = config.coingecko.baseUrl
 
   /**
    * Get basic price data using the simple/price endpoint (fastest)
@@ -111,43 +111,49 @@ class SummaryApiClient {
   }
 
   /**
-   * Get basic coin info without detailed market data (lighter than full coins/{id} endpoint)
+   * Get basic coin info using direct coins/{id} endpoint (optimized for performance)
    */
   async getBasicCoinInfo(coinId: string): Promise<SummaryStablecoinData | null> {
     try {
-      // Use the coins/list endpoint to get basic info, then supplement with simple price
-      const [listResponse, priceData] = await Promise.all([
-        fetch(`${this.baseUrl}/coins/list?include_platform=false`, {
-          headers: config.coingecko.apiKey ? {
-            'X-CG-Demo-API-Key': config.coingecko.apiKey
-          } : {}
-        }),
-        this.getSimplePrice(coinId)
-      ])
+      // 🚀 OPTIMIZED: Use direct /coins/{id} endpoint with minimal parameters
+      // This replaces the inefficient approach of fetching the entire coins list
+      const url = new URL(`${this.baseUrl}/coins/${coinId}`)
+      url.searchParams.set('localization', 'false')
+      url.searchParams.set('tickers', 'false') 
+      url.searchParams.set('market_data', 'true')
+      url.searchParams.set('community_data', 'false')
+      url.searchParams.set('developer_data', 'false')
+      url.searchParams.set('sparkline', 'false')
 
-      if (!listResponse.ok) {
-        console.error(`CoinGecko coins list API error: ${listResponse.status}`)
+      const response = await fetch(url.toString(), {
+        headers: config.coingecko.apiKey ? {
+          'X-CG-Demo-API-Key': config.coingecko.apiKey
+        } : {},
+        signal: AbortSignal.timeout(5000) // 5 second timeout
+      })
+
+      if (!response.ok) {
+        console.error(`CoinGecko coins/{id} API error: ${response.status}`)
         return null
       }
 
-      const coinsList = await listResponse.json()
-      const coinInfo = coinsList.find((coin: any) => coin.id === coinId)
+      const coinData = await response.json()
 
-      if (!coinInfo || !priceData) {
-        console.log(`No basic info found for ${coinId}`)
+      if (!coinData || !coinData.market_data) {
+        console.log(`No market data found for ${coinId}`)
         return null
       }
 
       return {
-        id: coinInfo.id,
-        symbol: coinInfo.symbol,
-        name: coinInfo.name,
-        current_price: priceData.current_price,
-        market_cap: 0, // Not available in basic endpoint
-        market_cap_rank: 0, // Not available in basic endpoint
-        price_change_24h: priceData.price_change_24h,
-        price_change_percentage_24h: priceData.price_change_percentage_24h,
-        last_updated: priceData.last_updated
+        id: coinData.id,
+        symbol: coinData.symbol,
+        name: coinData.name,
+        current_price: coinData.market_data.current_price?.usd || 0,
+        market_cap: coinData.market_data.market_cap?.usd || 0, // ✅ Now gets real market cap
+        market_cap_rank: coinData.market_data.market_cap_rank || 0, // ✅ Now gets real rank
+        price_change_24h: coinData.market_data.price_change_24h || 0,
+        price_change_percentage_24h: coinData.market_data.price_change_percentage_24h || 0,
+        last_updated: coinData.last_updated || new Date().toISOString()
       }
     } catch (error) {
       console.error('Error fetching basic coin info:', error)

@@ -49,7 +49,7 @@ Provide comprehensive, real-time risk assessment for USD-pegged stablecoins thro
 - **Scraping:** Playwright (browser pooling, SPA support), Enhanced Crawler (Crawlee-ready)
 - **Data Sources:** CoinGecko, GeckoTerminal, CEX APIs, GitHub API
 - **Caching:** Multi-level (Redis, Next.js, browser), enhanced cache service with TTL by data type
-- **Performance:** Progressive loading, background processing, parallel API orchestration, mobile-first responsive design
+- **Performance:** Progressive loading with parallel API orchestration within background jobs, mobile-first responsive design
 
 ### **Progressive Loading System (2025)**
 - **Sub-3 Second Initial Response:** Returns basic data immediately (500-1500ms)
@@ -250,6 +250,7 @@ Provide comprehensive, real-time risk assessment for USD-pegged stablecoins thro
 - [x] **Progressive Loading System** - Sub-3s initial response with background completion
 - [x] **Mobile Optimization** - Perfect alignment and responsive design
 - [x] **Clean UI Design** - Badge removal and visual clutter reduction
+- [x] **Collateral Breakdown Disabling** - Temporarily disabled collateral breakdown crawling and UI for performance optimization
 - [ ] **WebSocket Integration** - Real-time updates without polling
 - [ ] **Advanced Caching** - Predictive caching for popular stablecoins
 
@@ -261,6 +262,7 @@ Provide comprehensive, real-time risk assessment for USD-pegged stablecoins thro
 
 ### **Medium-term (Q3-Q4 2025)**
 - [ ] **CEX/DEX Market Depth** - Unified API, real-time order book, slippage
+- [ ] **Enhanced Collateral Breakdown** - Re-enable improved collateral analysis with better scraping and visualization
 - [ ] **Comparative Analysis** - Side-by-side stablecoin comparison
 - [ ] **Advanced Visualizations** - Interactive charts, drill-down
 - [ ] **ML Risk Modeling** - Predictive analytics

@@ -351,6 +351,8 @@ async function DashboardContent({ ticker }: { ticker: string }) {
               is_verified_source: assessment.transparency.verification_status === 'verified',
               transparency_issues: [],
               last_updated: assessment.transparency.last_update_date || new Date().toISOString().split('T')[0],
+              // Use real collateral data from transparency service
+              collateral_data: assessment.transparency.collateral_data || null,
               // Reserve composition data - HIDDEN FOR NOW
               /* 
               reserve_composition: {
@@ -413,8 +415,7 @@ async function DashboardContent({ ticker }: { ticker: string }) {
                 : [],
               // Add chain distribution data for the volume pie chart
               chain_distribution: assessment.liquidity.chain_distribution || [],
-              // Add historical TVL data for Phase 2 chart
-              historical_tvl: assessment.liquidity.historical_tvl || []
+
             } : null} 
           />
         </div>

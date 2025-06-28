@@ -87,6 +87,35 @@ class BackgroundJobService {
   }
 
   /**
+   * Check if there are any pending/processing jobs of a specific type for a ticker
+   */
+  hasActiveJobOfType(ticker: string, jobType: Job['type']): boolean {
+    const normalizedTicker = ticker.toLowerCase()
+    return Array.from(this.jobs.values()).some(
+      job => job.ticker === normalizedTicker && 
+             job.type === jobType && 
+             (job.status === 'pending' || job.status === 'processing')
+    )
+  }
+
+  /**
+   * Check if there's a recently completed job of a specific type for a ticker
+   * This helps avoid duplicate work when jobs complete very recently
+   */
+  hasRecentlyCompletedJob(ticker: string, jobType: Job['type'], maxAgeMinutes: number = 5): boolean {
+    const normalizedTicker = ticker.toLowerCase()
+    const cutoff = Date.now() - (maxAgeMinutes * 60 * 1000)
+    
+    return Array.from(this.jobs.values()).some(
+      job => job.ticker === normalizedTicker && 
+             job.type === jobType && 
+             job.status === 'completed' &&
+             job.completedAt && 
+             job.completedAt.getTime() > cutoff
+    )
+  }
+
+  /**
    * Get the latest completed job of a specific type for a ticker
    */
   getLatestCompletedJob(ticker: string, type: Job['type']): Job | null {
@@ -175,8 +204,7 @@ class BackgroundJobService {
   private async processAuditDiscovery(job: Job): Promise<JobResult> {
     try {
       // Import here to avoid circular dependencies
-      const { AuditDiscoveryService } = await import('./audit-discovery')
-      const auditService = new AuditDiscoveryService()
+      const { enhancedCacheService } = await import('./enhanced-cache-service')
       
       const { info, auditFolderUrl } = job.data || {}
       
@@ -184,14 +212,41 @@ class BackgroundJobService {
         return { success: false, error: 'No audit folder URL provided' }
       }
 
-      console.log(`🔍 Discovering audits for ${job.ticker} from: ${auditFolderUrl}`)
+      // 🎯 OPTIMIZATION: Check cache first to avoid duplicate work
+      console.log(`🔍 Checking cache for audit data: ${job.ticker}`)
+      const cachedAudits = await enhancedCacheService.get('audits', job.ticker)
+      
+      if (cachedAudits) {
+        console.log(`✅ Found cached audit data for ${job.ticker}, skipping expensive discovery`)
+        return {
+          success: true,
+          data: {
+            audits: cachedAudits,
+            discoveredAt: new Date().toISOString(),
+            fromCache: true
+          }
+        }
+      }
+
+      // 🚀 Only run expensive discovery if cache miss
+      console.log(`🔍 Cache miss - discovering audits for ${job.ticker} from: ${auditFolderUrl}`)
+      const { AuditDiscoveryService } = await import('./audit-discovery')
+      const auditService = new AuditDiscoveryService()
+      
       const audits = await auditService.discoverAudits(job.ticker, info?.name, [], [auditFolderUrl])
+      
+      // 💾 Store results in cache to prevent future duplicate work
+      if (audits && audits.length > 0) {
+        await enhancedCacheService.set('audits', job.ticker, audits)
+        console.log(`💾 Cached ${audits.length} audit results for ${job.ticker}`)
+      }
       
       return {
         success: true,
         data: {
           audits: audits || [],
-          discoveredAt: new Date().toISOString()
+          discoveredAt: new Date().toISOString(),
+          fromCache: false
         }
       }
     } catch (error: any) {
@@ -205,7 +260,7 @@ class BackgroundJobService {
   private async processTransparencyDiscovery(job: Job): Promise<JobResult> {
     try {
       // Import here to avoid circular dependencies
-      const { transparencyService } = await import('./transparency')
+      const { enhancedCacheService } = await import('./enhanced-cache-service')
       
       const { info } = job.data || {}
       
@@ -213,7 +268,26 @@ class BackgroundJobService {
         return { success: false, error: 'No stablecoin info provided' }
       }
 
-      console.log(`🔍 Discovering transparency data for ${job.ticker}`)
+      // 🎯 OPTIMIZATION: Check cache first to avoid duplicate work
+      console.log(`🔍 Checking cache for transparency data: ${job.ticker}`)
+      const cachedTransparency = await enhancedCacheService.get('transparency', job.ticker)
+      
+      if (cachedTransparency) {
+        console.log(`✅ Found cached transparency data for ${job.ticker}, skipping expensive discovery`)
+        return {
+          success: true,
+          data: {
+            transparency: cachedTransparency,
+            discoveredAt: new Date().toISOString(),
+            fromCache: true
+          }
+        }
+      }
+
+      // 🚀 Only run expensive discovery if cache miss
+      console.log(`🔍 Cache miss - discovering transparency data for ${job.ticker}`)
+      const { transparencyService } = await import('./transparency')
+      
       const transparencyData = await transparencyService.getTransparencyData(
         job.ticker, 
         info.name, 
@@ -222,11 +296,18 @@ class BackgroundJobService {
           : info.official_links?.homepage ? [info.official_links.homepage] : undefined
       )
       
+      // 💾 Store results in cache to prevent future duplicate work
+      if (transparencyData) {
+        await enhancedCacheService.set('transparency', job.ticker, transparencyData)
+        console.log(`💾 Cached transparency data for ${job.ticker}`)
+      }
+      
       return {
         success: true,
         data: {
           transparency: transparencyData,
-          discoveredAt: new Date().toISOString()
+          discoveredAt: new Date().toISOString(),
+          fromCache: false
         }
       }
     } catch (error: any) {

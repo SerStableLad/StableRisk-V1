@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts'
-import { TVLHistoryChart } from '@/components/tvl-history-chart'
+
 import { 
   TrendingUp, 
   ExternalLink, 
@@ -58,18 +58,7 @@ interface LiquidityPool {
   risk_level: 'low' | 'medium' | 'high' | 'very_high'
 }
 
-interface TVLHistoryData {
-  timestamp: number
-  date: string
-  tvl: number
-  chain: string
-}
 
-interface ChainTVLHistory {
-  chain: string
-  data: TVLHistoryData[]
-  color: string
-}
 
 interface LiquidityData {
   total_volume_24h: number
@@ -104,8 +93,7 @@ interface LiquidityData {
     liquidity: number
     percentage: number
   }>
-  // Add historical TVL data for Phase 2 chart
-  historical_tvl?: ChainTVLHistory[]
+
   last_liquidity_crisis?: {
     date: string
     description: string
@@ -673,19 +661,7 @@ export function LiquiditySection({ ticker, data: propData }: LiquiditySectionPro
         </CardContent>
       </Card>
 
-      {/* TVL History by Blockchain - Full Width */}
-      {data.historical_tvl && data.historical_tvl.length > 0 ? (
-        <TVLHistoryChart data={data.historical_tvl} />
-      ) : (
-        <Card>
-          <CardContent>
-            <div className="text-center py-8 text-muted-foreground">
-              <Activity className="h-12 w-12 mx-auto mb-2 opacity-50" />
-              <p>No historical TVL data available</p>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+
 
       {/* Major Exchanges */}
       <Card>

@@ -116,6 +116,7 @@ export interface TransparencyData {
   last_update_date?: string // ISO date string when update_frequency is unknown
   has_proof_of_reserves: boolean
   verification_status: 'verified' | 'unverified' | 'unknown'
+  collateral_data?: CollateralData
 }
 
 // Oracle setup
@@ -209,4 +210,23 @@ export interface RateLimitInfo {
   remaining: number
   reset_time: number
   limit: number
+}
+
+// Add these new interfaces for collateral data extraction
+
+export interface CollateralAllocation {
+  asset_type: string // e.g., "Cash", "Treasury Bills", "Commercial Paper"
+  market_value?: number // Dollar value
+  percentage?: number // Percentage of total (0-100)
+  description?: string // Additional details about the asset
+}
+
+export interface CollateralData {
+  total_assets?: number // Total asset value in USD
+  total_liabilities?: number // Total liabilities in USD
+  overcollateralization_ratio?: number // Ratio (e.g., 1.05 = 105%)
+  collateral_allocations: CollateralAllocation[]
+  last_updated?: string // ISO date string
+  report_url?: string // URL to the source report
+  confidence: number // Confidence score (0-1) for the extracted data
 } 

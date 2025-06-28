@@ -1,0 +1,60 @@
+# Task ID: 11
+# Title: Disable Collateral Breakdown Feature
+# Status: done
+# Dependencies: None
+# Priority: medium
+# Description: Temporarily disable collateral breakdown crawling and UI components for performance optimization
+# Details:
+Disable the collateral breakdown feature throughout the entire application stack to improve performance and eliminate unreliable data extraction. This includes removing UI components, disabling backend services, and updating API responses.
+
+# Test Strategy:
+Verify that collateral breakdown sections are hidden from UI, API responses return null for collateral_data, and no expensive web scraping occurs for collateral analysis.
+
+# Subtasks:
+## 1. Frontend UI Removal [done]
+### Dependencies: None
+### Description: Remove collateral breakdown section from transparency component
+### Details:
+- Removed entire collateral breakdown section from transparency-section.tsx
+- Removed CollateralBreakdownChart component and related interfaces
+- Removed unused chart imports (PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend)
+- Removed chart colors and constants (CHART_COLORS)
+- Removed collateral-related interfaces (CollateralAllocation, CollateralData)
+- Updated fallback UI to show only transparency dashboard placeholder
+
+## 2. Universal Transparency Scraper Disabling [done]
+### Dependencies: None
+### Description: Disable collateral data extraction in universal transparency scraper
+### Details:
+- Disabled main extractTransparencyData method
+- Returns empty result with "disabled" status and message "Collateral breakdown crawling has been disabled"
+- Changed detectedFramework to 'disabled' and successfulMethod to 'disabled'
+- Prevents expensive web scraping operations
+
+## 3. Enhanced Transparency Service Disabling [done]
+### Dependencies: None
+### Description: Disable collateral data building in enhanced transparency service
+### Details:
+- Disabled collateral data building entirely
+- Always returns collateral_data: undefined
+- Added logging: "🚫 Collateral data disabled for ${extractionResult.symbol}"
+- Updated default transparency data method with disabled logging
+
+## 4. Regular Transparency Service Disabling [done]
+### Dependencies: None
+### Description: Disable collateral data extraction in regular transparency service
+### Details:
+- Disabled collateral data extraction in analyzeDashboardContent method
+- Set collateral_data: undefined in all transparency data responses
+- Disabled extractCollateralData method to return null immediately
+- Disabled convertUniversalResultToTransparencyData method collateral data building
+- Removed complex HTML parsing for collateral data from extractCollateralFromHTML
+
+## 5. API Response Updates [done]
+### Dependencies: None
+### Description: Ensure all API responses return null/undefined for collateral data
+### Details:
+- All transparency data responses now return collateral_data: null/undefined
+- Performance improvement by eliminating expensive web scraping
+- Clear logging indicates collateral crawling is disabled
+- Maintains API compatibility while removing functionality 

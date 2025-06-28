@@ -678,27 +678,23 @@ export const STABLECOIN_TRANSPARENCY_MAPPING: Record<string, StablecoinMappingEn
 }
 
 /**
- * Trusted attestation providers ranked by reliability and reputation
+ * Trusted attestation providers
  * Used for scoring transparency quality
  */
-export const TRUSTED_ATTESTATION_PROVIDERS = {
-  tier1: [
-    'Grant Thornton LLP',
-    'BDO Italia', 
-    'Withum',
-    'Armanino LLP',
-    'BPM LLP',
-    'Mazars',
-    'On-chain verification',
-    'Chainlink Proof of Reserve'
-  ],
-  tier2: [
-    'Moore Cayman',
-    'FSS (Forensic & Specialist Services)',
-    'Top Seven Certified Public Accountants',
-    'CohnReznick LLP',
-    'Friedman LLP'
-  ]
-} as const
+export const TRUSTED_ATTESTATION_PROVIDERS = [
+  'Grant Thornton LLP',
+  'BDO Italia', 
+  'Withum',
+  'Armanino LLP',
+  'BPM LLP',
+  'Mazars',
+  'On-chain verification',
+  'Chainlink Proof of Reserve',
+  'Moore Cayman',
+  'FSS (Forensic & Specialist Services)',
+  'Top Seven Certified Public Accountants',
+  'CohnReznick LLP',
+  'Friedman LLP'
+] as const
 
  

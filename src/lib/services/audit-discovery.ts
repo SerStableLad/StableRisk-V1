@@ -64,6 +64,10 @@ export class AuditDiscoveryService {
   private githubRateLimitRemaining: number = this.GITHUB_API_LIMITS.authenticated
   private githubRateLimitReset: number = Date.now() + this.GITHUB_API_LIMITS.resetWindow
 
+  // 🎯 URL normalization and caching to prevent duplicate processing
+  private processedUrls = new Set<string>()
+  private urlResults = new Map<string, AuditInfo[]>()
+
   constructor() {
     // 🚀 GitHub API Client with Authentication
     const githubToken = config.github.accessToken
@@ -195,6 +199,30 @@ export class AuditDiscoveryService {
   private readonly SUFFICIENT_AUDIT_COUNT = 3;
 
   /**
+   * 🎯 Normalize URL by removing fragment identifiers (#anchors) to prevent duplicate processing
+   */
+  private normalizeUrl(url: string): string {
+    try {
+      const urlObj = new URL(url)
+      // Remove fragment (hash) to normalize URLs with different anchors
+      urlObj.hash = ''
+      return urlObj.toString()
+    } catch {
+      // If URL parsing fails, return original URL
+      return url
+    }
+  }
+
+  /**
+   * 🎯 Clear URL processing cache between discovery sessions
+   */
+  private clearUrlCache(): void {
+    this.processedUrls.clear()
+    this.urlResults.clear()
+    console.log(`🧹 Cleared URL processing cache`)
+  }
+
+  /**
    * 🎯 Main audit discovery entry point
    * 
    * Uses a 3-tier priority system:
@@ -210,6 +238,9 @@ export class AuditDiscoveryService {
   ): Promise<AuditInfo[]> {
     const startTime = Date.now();
     console.log(`🔍 Starting audit discovery for ${stablecoinSymbol}`);
+    
+    // 🧹 Clear URL processing cache for this discovery session
+    this.clearUrlCache();
     
     // 🏆 TIER 1: Check curated mapping table first (fastest path)
     const knownAuditUrl = getKnownAuditFolderUrl(stablecoinSymbol);
@@ -846,23 +877,39 @@ export class AuditDiscoveryService {
    */
   private async scrapeDevTechDocsPage(url: string, symbol: string): Promise<AuditInfo[]> {
     try {
-      // First, try basic fetch to see if content is available
-      const response = await fetch(url)
-      if (!response.ok) return []
+      // 🎯 Normalize URL to prevent duplicate processing
+      const normalizedUrl = this.normalizeUrl(url)
+      
+      // Check if we've already processed this normalized URL
+      if (this.processedUrls.has(normalizedUrl)) {
+        const cachedResults = this.urlResults.get(normalizedUrl) || []
+        console.log(`⚡ Using cached scraping results for ${normalizedUrl}: ${cachedResults.length} audits`)
+        return cachedResults
+      }
+
+      // Mark URL as being processed
+      this.processedUrls.add(normalizedUrl)
+
+      // First, try basic fetch to see if content is available (use normalized URL)
+      const response = await fetch(normalizedUrl)
+      if (!response.ok) {
+        this.urlResults.set(normalizedUrl, [])
+        return []
+      }
 
       const html = await response.text()
       
       // Check if this is a JavaScript-rendered site that needs special handling
-      const needsJavaScriptScraping = this.detectJavaScriptRenderedSite(url, html)
+      const needsJavaScriptScraping = this.detectJavaScriptRenderedSite(normalizedUrl, html)
       
       let finalHtml = html
       let auditLinks: Array<{ href: string; text: string }> = []
       
       if (needsJavaScriptScraping) {
-        console.log(`🔍 Detected JavaScript-rendered site, using Playwright for ${url}`)
+        console.log(`🔍 Detected JavaScript-rendered site, using Playwright for ${normalizedUrl}`)
         
-        // Use Playwright scraper for JavaScript-rendered sites
-        const scrapedContent = await playwrightScraperService.scrapePage(url, {
+        // Use Playwright scraper for JavaScript-rendered sites (use normalized URL)
+        const scrapedContent = await playwrightScraperService.scrapePage(normalizedUrl, {
           timeout: 10000 // Reduced from 20s to 10s
         })
         
@@ -935,9 +982,9 @@ export class AuditDiscoveryService {
                   continue
                 }
                 
-                // Convert relative URLs to absolute
+                // Convert relative URLs to absolute (use normalized URL as base)
                 if (auditUrl.startsWith('/')) {
-                  const baseUrl = new URL(url).origin
+                  const baseUrl = new URL(normalizedUrl).origin
                   auditUrl = `${baseUrl}${auditUrl}`
                 } else if (!auditUrl.startsWith('http')) {
                   continue
@@ -968,11 +1015,16 @@ export class AuditDiscoveryService {
 
       // Deduplicate audits at the method level as well
       const deduplicatedAudits = this.deduplicateAudits(audits)
-      console.log(`🔍 Scraped ${url}: ${audits.length} → ${deduplicatedAudits.length} unique audits`)
+      console.log(`🔍 Scraped ${normalizedUrl} (original: ${url}): ${audits.length} → ${deduplicatedAudits.length} unique audits`)
       
+      // Cache the results for this normalized URL
+      this.urlResults.set(normalizedUrl, deduplicatedAudits)
       return deduplicatedAudits
     } catch (error) {
       console.error(`Error scraping dev/tech docs page ${url}:`, error)
+      // Cache empty result for failed URLs
+      const normalizedUrl = this.normalizeUrl(url)
+      this.urlResults.set(normalizedUrl, [])
       return []
     }
   }
@@ -1219,10 +1271,23 @@ export class AuditDiscoveryService {
         return [];
       }
 
-      // Fetch the page content to analyze it
+      // 🎯 Normalize URL to prevent duplicate processing of same page with different fragments
+      const normalizedUrl = this.normalizeUrl(url)
+      
+      // Check if we've already processed this normalized URL
+      if (this.processedUrls.has(normalizedUrl)) {
+        const cachedResults = this.urlResults.get(normalizedUrl) || []
+        console.log(`⚡ Using cached results for ${normalizedUrl} (original: ${url}): ${cachedResults.length} audits`)
+        return cachedResults
+      }
+
+      // Mark URL as being processed
+      this.processedUrls.add(normalizedUrl)
+
+      // Fetch the page content to analyze it (use normalized URL for the request)
       let html = ''
       try {
-        const response = await fetch(url, { 
+        const response = await fetch(normalizedUrl, { 
           headers: { 'User-Agent': 'Mozilla/5.0 (compatible; StableRisk/1.0)' },
           signal: AbortSignal.timeout(3000)
         })
@@ -1230,63 +1295,76 @@ export class AuditDiscoveryService {
           html = await response.text()
         }
       } catch (error) {
-        console.warn(`Failed to fetch audit page ${url}:`, error)
+        console.warn(`Failed to fetch audit page ${normalizedUrl}:`, error)
       }
 
       // Check if this is a documentation page that lists audits
-      if (this.isDocumentationPage(url, html)) {
-        console.log(`📋 Detected documentation page: ${url}`)
+      if (this.isDocumentationPage(normalizedUrl, html)) {
+        console.log(`📋 Detected documentation page: ${normalizedUrl} (original: ${url})`)
         
         // Extract actual audit firms from the documentation page
-        const auditFirms = this.extractAuditLinksFromDocPage(html, url)
+        const auditFirms = this.extractAuditLinksFromDocPage(html, normalizedUrl)
         
         console.log(`🔍 DEBUG: extractAuditLinksFromDocPage returned ${auditFirms.length} firms:`, auditFirms)
         
         if (auditFirms.length > 0) {
           console.log(`🔍 Found ${auditFirms.length} audit firms on documentation page:`, auditFirms.map(f => f.firm))
           
-          // Return multiple audit entries for each firm found
-          return auditFirms.map(firmInfo => ({
+          // Create audit entries for each firm found
+          const results = auditFirms.map(firmInfo => ({
             firm: firmInfo.firm,
-            date: this.extractDateFromUrl(firmInfo.url || url) || new Date().toISOString().split('T')[0],
+            date: this.extractDateFromUrl(firmInfo.url || normalizedUrl) || new Date().toISOString().split('T')[0],
             outstanding_issues: 0,
             critical_high_issues: 0,
             resolution_status: 'resolved' as const,
-            report_url: firmInfo.url || url,
+            report_url: firmInfo.url || normalizedUrl,
             is_top_tier: this.isTopTierFirm(firmInfo.firm)
           }))
+          
+          // Cache the results for this normalized URL
+          this.urlResults.set(normalizedUrl, results)
+          return results
         }
         
-        // If no firms found on documentation page, don't create any audit entries
+        // If no firms found on documentation page, cache empty result
+        this.urlResults.set(normalizedUrl, [])
         return []
       }
 
       // If it's not a documentation page, treat as a single audit report
-      const firmName = this.extractFirmFromUrl(url) || 
-                      this.extractFirmFromContext(pageContext, url) ||
+      const firmName = this.extractFirmFromUrl(normalizedUrl) || 
+                      this.extractFirmFromContext(pageContext, normalizedUrl) ||
                       'Unknown Firm'
 
       // Don't create audit entries for unknown firms
       if (firmName === 'Unknown Firm') {
+        this.urlResults.set(normalizedUrl, [])
         return []
       }
 
-      const auditDate = this.extractDateFromUrl(url) || 
-                       this.extractDate(url, url, pageContext) ||
+      const auditDate = this.extractDateFromUrl(normalizedUrl) || 
+                       this.extractDate(normalizedUrl, normalizedUrl, pageContext) ||
                        new Date().toISOString().split('T')[0]
 
-      return [{
+      const results = [{
         firm: firmName,
         date: auditDate,
         outstanding_issues: 0,
         critical_high_issues: 0,
         resolution_status: 'resolved' as const,
-        report_url: url,
+        report_url: normalizedUrl,
         is_top_tier: this.isTopTierFirm(firmName)
       }]
+      
+      // Cache the results
+      this.urlResults.set(normalizedUrl, results)
+      return results
 
     } catch (error) {
       console.error(`Error analyzing audit link ${url}:`, error)
+      // Cache empty result for failed URLs to prevent retries
+      const normalizedUrl = this.normalizeUrl(url)
+      this.urlResults.set(normalizedUrl, [])
       return []
     }
   }

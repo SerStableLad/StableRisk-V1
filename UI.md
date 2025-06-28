@@ -94,7 +94,7 @@
 
 ### **6.1 Main Summary Card (Mobile-Optimized)**
 - **Stablecoin basic info**: Name, logo, market cap, genesis date, pegging type (fiat-backed, crypto-collateralized, algorithmic, commodity-backed with commodity specified)  
-- **Overall risk score**: Circular meter with color-coded segments (red/yellow/green)
+- **Overall risk score**: Circular meter with color-coded segments (red/yellow/green) and an aria-label describing the risk score. Include an on-screen textual value representing the overall risk score for accessibility compliance.
 - **Progressive loading**: Basic info appears immediately, detailed analysis loads progressively
 - **Mobile-friendly layout**: Responsive design with proper touch targets
 
