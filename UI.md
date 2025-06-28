@@ -126,7 +126,7 @@
 - **No badges**: Clean text-based status instead of verification badges
 
 #### **Audit Section**  
-- **Clean audit list**: All audits in last 6 months with simplified layout
+    - **Clean audit list**: All audits in the last 6 months with simplified layout
 - **Text-based status**: Audit types and verification status as clean text
 - **Coverage areas**: Comma-separated text instead of badge grids
 - **Progressive loading**: Audit data loads via background jobs
