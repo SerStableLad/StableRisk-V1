@@ -237,8 +237,26 @@ export async function POST(
     const resolvedParams = await params
     const ticker = resolvedParams.ticker.toLowerCase()
     const body = await request.json()
+
+    // Validate request body
+    if (!body || typeof body !== 'object') {
+      return NextResponse.json({
+        success: false,
+        error: 'Invalid request body',
+        message: 'Request body must be a valid JSON object'
+      }, { status: 400 })
+    }
+
     const { jobIds } = body
 
+    // Validate jobIds
+    if (jobIds && !Array.isArray(jobIds)) {
+      return NextResponse.json({
+        success: false,
+        error: 'Invalid jobIds',
+        message: 'jobIds must be an array'
+      }, { status: 400 })
+    }
     console.log(`📊 Checking job status for ${ticker}`)
     
     const jobStatuses: any = {}
