@@ -26,7 +26,7 @@ class BackgroundJobService {
   /**
    * Add a new job to the queue
    */
-  addJob(type: Job['type'], ticker: string, data?: any, priority: Job['priority'] = 'normal'): string {
+  addJob(type: Job['type'], ticker: string, data?: Record<string, unknown>, priority: Job['priority'] = 'normal'): string {
     const jobId = `${type}_${ticker}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
     
     const job: Job = {
