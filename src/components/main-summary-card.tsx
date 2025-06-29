@@ -198,7 +198,7 @@ export function MainSummaryCard({
                     href={info.official_links.homepage[0]} 
                     target="_blank" 
                     rel="noopener noreferrer"
-                    className="font-medium text-blue-600 hover:text-blue-800 text-sm break-all"
+                    className="font-medium text-blue-600 hover:text-blue-800 text-sm break-words"
                   >
                     {info.official_links.homepage[0].replace(/^https?:\/\//, '').replace(/\/$/, '')}
                   </a>
@@ -213,7 +213,7 @@ export function MainSummaryCard({
                     href={info.official_links.github_repos[0]} 
                     target="_blank" 
                     rel="noopener noreferrer"
-                    className="font-medium text-blue-600 hover:text-blue-800 text-sm break-all"
+                    className="font-medium text-blue-600 hover:text-blue-800 text-sm break-words"
                   >
                     {info.official_links.github_repos[0].replace('https://github.com/', '')}
                   </a>

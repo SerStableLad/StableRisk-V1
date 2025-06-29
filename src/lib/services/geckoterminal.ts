@@ -91,18 +91,7 @@ interface GeckoTerminalOHLCVResponse {
   }
 }
 
-interface TVLHistoryData {
-  timestamp: number
-  date: string
-  tvl: number
-  chain: string
-}
 
-interface ChainTVLHistory {
-  chain: string
-  data: TVLHistoryData[]
-  color: string
-}
 
 export class GeckoTerminalService {
   private client: ApiClient
@@ -473,72 +462,7 @@ export class GeckoTerminalService {
     }
   }
 
-  /**
-   * Get historical TVL data by blockchain for charting
-   * For now, we'll generate mock historical data based on current TVL
-   * TODO: Implement real historical data when GeckoTerminal historical API is available
-   */
-  async getHistoricalTVLByChain(
-    tokenAddress: string, 
-    symbol: string, 
-    timeframe: '1h' | '4h' | '1d' | '1w' = '1d',
-    days: 7 | 30 | 90 = 30
-  ): Promise<ChainTVLHistory[]> {
-    try {
-      console.log(`📈 Generating ${days}d historical TVL data for ${symbol}...`)
-      
-      // First get current liquidity analysis to know which chains have TVL
-      const currentAnalysis = await this.getLiquidityAnalysis(tokenAddress, symbol)
-      if (!currentAnalysis || !currentAnalysis.chain_distribution.length) {
-        console.warn('No current liquidity data found for historical analysis')
-        return []
-      }
 
-      // Generate mock historical data for each chain with significant TVL
-      const chainHistories: ChainTVLHistory[] = []
-      const significantChains = currentAnalysis.chain_distribution.filter(chain => chain.percentage > 1) // Only chains with >1% TVL
-
-      for (const chainData of significantChains) {
-        const historicalData: TVLHistoryData[] = []
-        const currentTVL = chainData.liquidity
-
-        // Generate data points for the specified time period
-        const dataPoints = Math.min(days, 30) // Limit to 30 data points max
-        const timeInterval = (days * 24 * 60 * 60) / dataPoints // seconds between points
-
-        for (let i = 0; i < dataPoints; i++) {
-          const timestamp = Math.floor(Date.now() / 1000) - ((dataPoints - 1 - i) * timeInterval)
-          
-          // Generate realistic variation around current TVL (±20% variation)
-          const variation = 0.8 + (Math.random() * 0.4) // 0.8 to 1.2 multiplier
-          const historicalTVL = Math.round(currentTVL * variation)
-          
-          historicalData.push({
-            timestamp,
-            date: new Date(timestamp * 1000).toLocaleDateString('en-US', { 
-              month: 'short', 
-              day: 'numeric' 
-            }),
-            tvl: historicalTVL,
-            chain: chainData.chain
-          })
-        }
-
-        chainHistories.push({
-          chain: chainData.chain,
-          data: historicalData,
-          color: this.getChainColor(chainData.chain)
-        })
-      }
-
-      console.log(`✅ Generated historical TVL data for ${chainHistories.length} chains`)
-      return chainHistories
-
-    } catch (error) {
-      console.error('Failed to generate historical TVL data:', error)
-      return []
-    }
-  }
 
   /**
    * Get OHLCV data for a specific pool

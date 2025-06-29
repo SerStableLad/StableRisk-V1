@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+
 import { 
   Eye, 
   ExternalLink, 
@@ -15,7 +16,10 @@ import {
   XCircle,
   FileText,
   Calendar,
-  Building
+  Building,
+  PieChart as PieChartIcon,
+  TrendingUp,
+  DollarSign
 } from 'lucide-react'
 
 interface AttestationProvider {
@@ -26,6 +30,8 @@ interface AttestationProvider {
   report_url?: string
   is_verified: boolean
 }
+
+
 
 interface TransparencyData {
   dashboard_url?: string
@@ -47,92 +53,6 @@ interface TransparencyData {
 interface TransparencySectionProps {
   ticker: string
   data?: TransparencyData | null
-}
-
-// Generate mock data for development
-function generateMockData(ticker: string): TransparencyData {
-  const providerData: Record<string, Partial<TransparencyData>> = {
-    'USDT0': {
-      dashboard_url: 'https://wallet.tether.to/transparency',
-      has_proof_of_reserves: true,
-      proof_of_reserves_score: 85,
-      attestation_providers: [
-        {
-          name: 'BDO Italia',
-          type: 'audit_firm',
-          reputation_score: 8.5,
-          last_report_date: '2024-09-30',
-          report_url: 'https://tether.to/en/transparency/',
-          is_verified: true
-        }
-      ],
-      update_frequency: 'monthly',
-      is_verified_source: true,
-      transparency_issues: []
-    },
-    'USDC': {
-      dashboard_url: 'https://www.centre.io/usdc-transparency',
-      has_proof_of_reserves: true,
-      proof_of_reserves_score: 95,
-      attestation_providers: [
-        {
-          name: 'Grant Thornton LLP',
-          type: 'audit_firm',
-          reputation_score: 9.2,
-          last_report_date: '2024-10-31',
-          report_url: 'https://www.centre.io/usdc-transparency',
-          is_verified: true
-        }
-      ],
-      update_frequency: 'monthly',
-      is_verified_source: true,
-      transparency_issues: []
-    },
-    'DAI': {
-      dashboard_url: 'https://daistats.com/',
-      has_proof_of_reserves: true,
-      proof_of_reserves_score: 90,
-      attestation_providers: [
-        {
-          name: 'On-chain Verification',
-          type: 'blockchain_analytics',
-          reputation_score: 9.8,
-          last_report_date: '2024-12-11',
-          is_verified: true
-        }
-      ],
-      update_frequency: 'real-time',
-      is_verified_source: true,
-      transparency_issues: []
-    }
-  }
-
-  const baseData = providerData[ticker] || {}
-  
-  return {
-    dashboard_url: baseData.dashboard_url,
-    has_proof_of_reserves: baseData.has_proof_of_reserves ?? false,
-    proof_of_reserves_score: baseData.proof_of_reserves_score ?? 50,
-    attestation_providers: baseData.attestation_providers ?? [
-      {
-        name: 'Self-reported',
-        type: 'self_reported',
-        reputation_score: 3.0,
-        last_report_date: '2024-06-01',
-        is_verified: false
-      }
-    ],
-    update_frequency: baseData.update_frequency ?? 'unknown',
-    last_updated: new Date().toISOString().split('T')[0],
-    transparency_issues: baseData.transparency_issues ?? ['Limited transparency information available'],
-    reserve_composition: {
-      cash_and_equivalents: 85,
-      treasury_bills: 10,
-      other_investments: 5,
-      crypto_assets: 0
-    },
-    is_verified_source: baseData.is_verified_source ?? false
-  }
 }
 
 const getUpdateFrequencyBadge = (frequency: string) => {
@@ -171,15 +91,65 @@ const getReputationColor = (score: number) => {
   return 'text-red-600'
 }
 
+const getAssetTypeColor = (assetType: string) => {
+  const type = assetType.toLowerCase()
+  if (type.includes('cash') || type.includes('money market')) return 'bg-green-100 text-green-800'
+  if (type.includes('treasury') || type.includes('government')) return 'bg-blue-100 text-blue-800'
+  if (type.includes('commercial') || type.includes('corporate')) return 'bg-purple-100 text-purple-800'
+  if (type.includes('crypto') || type.includes('usdc') || type.includes('usdt')) return 'bg-orange-100 text-orange-800'
+  return 'bg-gray-100 text-gray-800'
+}
+
+const formatCurrency = (amount: number) => {
+  if (amount >= 1e9) {
+    return `$${(amount / 1e9).toFixed(1)}B`
+  } else if (amount >= 1e6) {
+    return `$${(amount / 1e6).toFixed(1)}M`
+  } else if (amount >= 1e3) {
+    return `$${(amount / 1e3).toFixed(1)}K`
+  }
+  return `$${amount.toLocaleString()}`
+}
+
+const formatPercentage = (value: number) => {
+  return `${value.toFixed(1)}%`
+}
+
+
+
+
+
 export function TransparencySection({ ticker, data: propData }: TransparencySectionProps) {
+  // Debug logging to see what data we're receiving
+  console.log('🔍 TransparencySection Debug:', {
+    ticker,
+    hasData: !!propData
+  })
+
   // Use real data only - no fallback to mock data
   if (!propData) {
     return (
       <div className="space-y-6">
         <div className="text-center space-y-2">
           <h2 className="text-3xl font-bold">Transparency & Proof of Reserves</h2>
-          <p className="text-muted-foreground">No transparency data available</p>
+          <p className="text-muted-foreground">Unable to retrieve transparency data</p>
         </div>
+        
+        {/* Show placeholder card when no data is available */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center space-x-2">
+              <Eye className="h-5 w-5" />
+              <span>Transparency Dashboard</span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-center py-8 text-muted-foreground">
+              <Eye className="h-12 w-12 mx-auto mb-2 text-muted-foreground/50" />
+              <p>No transparency dashboard data available</p>
+            </div>
+          </CardContent>
+        </Card>
       </div>
     )
   }
@@ -214,25 +184,9 @@ export function TransparencySection({ ticker, data: propData }: TransparencySect
       {/* Main Transparency Dashboard */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center justify-between">
-            <div className="flex items-center space-x-2">
-              <Eye className="h-5 w-5" />
-              <span>Transparency Dashboard</span>
-            </div>
-            <div className="flex items-center space-x-2">
-              {data.has_proof_of_reserves ? (
-                <Badge variant="default" className="bg-green-100 text-green-800">
-                  <CheckCircle className="h-3 w-3 mr-1" />
-                  Verified Reserves
-                </Badge>
-              ) : (
-                <Badge variant="destructive">
-                  <XCircle className="h-3 w-3 mr-1" />
-                  Unverified
-                </Badge>
-              )}
-              {getUpdateFrequencyBadge(data.update_frequency)}
-            </div>
+          <CardTitle className="flex items-center space-x-2">
+            <Eye className="h-5 w-5" />
+            <span>Transparency Dashboard</span>
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -280,6 +234,8 @@ export function TransparencySection({ ticker, data: propData }: TransparencySect
         </CardContent>
       </Card>
 
+
+
       {/* Attestation Providers */}
       <Card>
         <CardHeader>
@@ -291,84 +247,53 @@ export function TransparencySection({ ticker, data: propData }: TransparencySect
         <CardContent>
           <div className="space-y-4">
             {data.attestation_providers.map((provider, index) => (
-              <div key={index} className="border rounded-lg p-4">
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center space-x-3">
-                    <Building className="h-5 w-5 text-muted-foreground" />
-                    <div>
-                      <h4 className="font-medium">{provider.name}</h4>
-                      <p className="text-sm text-muted-foreground">
-                        Reputation: <span className={getReputationColor(provider.reputation_score)}>
-                          {provider.reputation_score.toFixed(1)}/10
-                        </span>
-                      </p>
-                    </div>
-                  </div>
+              <div key={index} className="flex items-center justify-between p-4 border rounded-lg">
+                <div className="space-y-2">
                   <div className="flex items-center space-x-2">
+                    <h4 className="font-medium">{provider.name}</h4>
                     {getProviderTypeBadge(provider.type)}
-                    {provider.is_verified ? (
-                      <Badge variant="default" className="bg-green-100 text-green-800">
-                        <CheckCircle className="h-3 w-3 mr-1" />
-                        Verified
-                      </Badge>
-                    ) : (
-                      <Badge variant="outline">
-                        <AlertTriangle className="h-3 w-3 mr-1" />
-                        Unverified
-                      </Badge>
+                    {provider.is_verified && (
+                      <CheckCircle className="h-4 w-4 text-green-600" />
                     )}
+                  </div>
+                  <div className="flex items-center space-x-4 text-sm text-muted-foreground">
+                    <div className="flex items-center space-x-1">
+                      <Building className="h-4 w-4" />
+                      <span>Reputation: </span>
+                      <span className={`font-medium ${getReputationColor(provider.reputation_score)}`}>
+                        {provider.reputation_score.toFixed(1)}/10
+                      </span>
+                    </div>
+                    <div className="flex items-center space-x-1">
+                      <Calendar className="h-4 w-4" />
+                      <span>Last Report: {new Date(provider.last_report_date).toLocaleDateString()}</span>
+                    </div>
                   </div>
                 </div>
                 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-                  <div className="flex items-center space-x-2">
-                    <Calendar className="h-4 w-4 text-muted-foreground" />
-                    <span>Last Report: {new Date(provider.last_report_date).toLocaleDateString()}</span>
-                  </div>
-                  
-                  {provider.report_url && (
-                    <div className="flex items-center space-x-2">
-                      <FileText className="h-4 w-4 text-muted-foreground" />
-                      <Button
-                        variant="link"
-                        size="sm"
-                        className="h-auto p-0 text-blue-600 hover:text-blue-800"
-                        onClick={() => window.open(provider.report_url, '_blank', 'noopener,noreferrer')}
-                      >
-                        View Report <ExternalLink className="h-3 w-3 ml-1" />
-                      </Button>
-                    </div>
-                  )}
-                  
-                  <div className="flex items-center space-x-2">
-                    <Clock className="h-4 w-4 text-muted-foreground" />
-                    <span>
-                      {Math.floor((Date.now() - new Date(provider.last_report_date).getTime()) / (1000 * 60 * 60 * 24))} days ago
-                    </span>
-                  </div>
-                </div>
+                {provider.report_url && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => window.open(provider.report_url, '_blank', 'noopener,noreferrer')}
+                    className="flex items-center space-x-2"
+                  >
+                    <ExternalLink className="h-4 w-4" />
+                    <span>View Report</span>
+                  </Button>
+                )}
               </div>
             ))}
           </div>
         </CardContent>
       </Card>
 
-      {/* Reserve Composition - HIDDEN FOR NOW */}
-      {/* 
-      FUTURE IMPLEMENTATION: Reserve Composition Data (Phase 5 - Future Enhancements)
-      See PRD.md and TECH_ARCHITECTURE.md for implementation roadmap.
-      
-      TODO: Real reserve composition data integration:
-      - Connect to official issuer APIs
-      - Parse regulatory filings and attestation reports  
-      - Add fallback to manual data entry
-      - Implement daily/weekly update frequency
-      
+      {/* Reserve Composition (if available) */}
       {data.reserve_composition && (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center space-x-2">
-              <FileText className="h-5 w-5" />
+              <TrendingUp className="h-5 w-5" />
               <span>Reserve Composition</span>
             </CardTitle>
           </CardHeader>
@@ -376,29 +301,26 @@ export function TransparencySection({ ticker, data: propData }: TransparencySect
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <div className="text-center p-4 border rounded-lg">
                 <p className="text-sm text-muted-foreground">Cash & Equivalents</p>
-                <p className="text-2xl font-bold text-green-600">
+                <p className="text-xl font-bold text-green-600">
                   {data.reserve_composition.cash_and_equivalents}%
                 </p>
               </div>
-              
               <div className="text-center p-4 border rounded-lg">
                 <p className="text-sm text-muted-foreground">Treasury Bills</p>
-                <p className="text-2xl font-bold text-blue-600">
+                <p className="text-xl font-bold text-blue-600">
                   {data.reserve_composition.treasury_bills}%
                 </p>
               </div>
-              
               <div className="text-center p-4 border rounded-lg">
                 <p className="text-sm text-muted-foreground">Other Investments</p>
-                <p className="text-2xl font-bold text-yellow-600">
+                <p className="text-xl font-bold text-purple-600">
                   {data.reserve_composition.other_investments}%
                 </p>
               </div>
-              
               {data.reserve_composition.crypto_assets !== undefined && (
                 <div className="text-center p-4 border rounded-lg">
                   <p className="text-sm text-muted-foreground">Crypto Assets</p>
-                  <p className="text-2xl font-bold text-purple-600">
+                  <p className="text-xl font-bold text-orange-600">
                     {data.reserve_composition.crypto_assets}%
                   </p>
                 </div>
@@ -407,7 +329,6 @@ export function TransparencySection({ ticker, data: propData }: TransparencySect
           </CardContent>
         </Card>
       )}
-      */}
     </div>
   )
 }

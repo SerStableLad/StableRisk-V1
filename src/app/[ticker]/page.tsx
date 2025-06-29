@@ -351,6 +351,8 @@ async function DashboardContent({ ticker }: { ticker: string }) {
               is_verified_source: assessment.transparency.verification_status === 'verified',
               transparency_issues: [],
               last_updated: assessment.transparency.last_update_date || new Date().toISOString().split('T')[0],
+              // Use real collateral data from transparency service
+              collateral_data: assessment.transparency.collateral_data || null,
               // Reserve composition data - HIDDEN FOR NOW
               /* 
               reserve_composition: {
@@ -385,7 +387,8 @@ async function DashboardContent({ ticker }: { ticker: string }) {
                 market_depth_1_percent: dex.liquidity * 0.1,
                 last_updated: new Date().toISOString(),
                 is_active: true,
-                trading_pairs: [`${ticker}/USDC`, `${ticker}/ETH`]
+                trading_pairs: [`${ticker}/USDC`, `${ticker}/ETH`],
+                chain: dex.chain
               })) || [],
               liquidity_pools: [],
               market_depth_analysis: {
@@ -413,8 +416,7 @@ async function DashboardContent({ ticker }: { ticker: string }) {
                 : [],
               // Add chain distribution data for the volume pie chart
               chain_distribution: assessment.liquidity.chain_distribution || [],
-              // Add historical TVL data for Phase 2 chart
-              historical_tvl: assessment.liquidity.historical_tvl || []
+
             } : null} 
           />
         </div>

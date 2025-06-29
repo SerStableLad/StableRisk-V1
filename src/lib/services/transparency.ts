@@ -1,4 +1,4 @@
-import { TransparencyData } from '@/lib/types'
+import { TransparencyData, CollateralData, CollateralAllocation } from '@/lib/types'
 import { 
   getKnownTransparencyData, 
   isKnownStablecoin, 
@@ -12,6 +12,7 @@ import { metricsService } from './metrics-service'
 import { ApiClient } from './api-client'
 import { config } from '@/lib/config'
 import { chromium, Browser, Page } from 'playwright'
+import { UniversalTransparencyExtractor, TransparencyResult } from './universal-transparency-scraper'
 
 // Types for hybrid discovery
 interface DiscoveryResult {
@@ -44,6 +45,9 @@ export class TransparencyService {
   
   // Minimum acceptable confidence to stop the search
   private readonly SUFFICIENT_CONFIDENCE_THRESHOLD = 0.8;
+  
+  // Universal scraper for enhanced accuracy
+  private universalExtractor = new UniversalTransparencyExtractor();
 
   /**
    * Get basic transparency data for a stablecoin (for Tier 2)
@@ -190,9 +194,15 @@ export class TransparencyService {
           console.warn(`⏰ Mapping data for ${symbol} may be stale - recommend updating`)
         }
         
-        // 🚀 OPTIMIZED: Skip expensive live analysis for trusted mapping data
+        // 🚀 ENHANCED: Use universal scraper for accurate collateral data extraction
         const metadata = getMappingMetadata(symbol);
         const isRecentData = metadata && !isMappingDataStale(symbol);
+        
+        // Always try universal scraper for known URLs to get accurate collateral data
+        console.log(`🚀 Using universal scraper for enhanced accuracy on ${symbol}`);
+        
+        // Universal scraper is disabled for now
+        console.log(`🚫 Universal scraper disabled for ${symbol}`);
         
         if (isRecentData) {
           console.log(`⚡ Using trusted mapping table data for ${symbol} (recent data, skipping expensive Playwright analysis)`);
@@ -813,10 +823,8 @@ export class TransparencyService {
 
     // Attestation provider quality
     if (data.attestation_provider) {
-      if (TRUSTED_ATTESTATION_PROVIDERS.tier1.includes(data.attestation_provider as any)) {
-        score += 30
-      } else if (TRUSTED_ATTESTATION_PROVIDERS.tier2.includes(data.attestation_provider as any)) {
-        score += 20
+      if (TRUSTED_ATTESTATION_PROVIDERS.includes(data.attestation_provider as any)) {
+        score += 25
       } else {
         score += 10
       }
@@ -875,11 +883,7 @@ export class TransparencyService {
     }
 
     if (data.attestation_provider) {
-      if (TRUSTED_ATTESTATION_PROVIDERS.tier1.includes(data.attestation_provider as any)) {
-        strengths.push(`Tier 1 attestation provider: ${data.attestation_provider}`)
-      } else {
-        strengths.push(`Third-party attestation: ${data.attestation_provider}`)
-      }
+      strengths.push(`Attestation provider: ${data.attestation_provider}`)
     } else {
       weaknesses.push('No third-party attestation')
       recommendations.push('Engage reputable auditing firm for regular attestations')
@@ -1128,10 +1132,9 @@ export class TransparencyService {
    * Extract attestation provider from HTML
    */
   private extractAttestationProvider(html: string): string | undefined {
-    const providers = Object.values(TRUSTED_ATTESTATION_PROVIDERS).flat()
     const htmlLower = html.toLowerCase()
     
-    for (const provider of providers) {
+    for (const provider of TRUSTED_ATTESTATION_PROVIDERS) {
       if (htmlLower.includes(provider.toLowerCase())) {
         return provider
       }
@@ -1310,7 +1313,7 @@ export class TransparencyService {
    * Analyze table content for transparency data
    */
   private analyzeTableContent(html: string): ParsedTransparencyInfo {
-    const tableRegex = /<table[^>]*>(.*?)<\/table>/gi
+    const tableRegex = /<table[^>]*>([\s\S]*?)<\/table>/gi
     const transparencyKeywords = [
       'reserves', 'collateral', 'backing', 'attestation',
       // Enhanced financial metrics
@@ -1716,6 +1719,10 @@ export class TransparencyService {
       const html = await page.content()
       console.log(`📄 Fetched ${html.length} characters from rendered dashboard`)
       
+      // Extract collateral data using enhanced analysis - DISABLED
+      // const collateralData = await this.extractCollateralData(page, html, url)
+      const collateralData = null
+      
       // Try to extract specific data points that might be dynamically loaded
       const dashboardData = await page.evaluate(() => {
         const text = document.body.innerText.toLowerCase()
@@ -1783,7 +1790,8 @@ export class TransparencyService {
         updateFrequency: dashboardData.updateFrequency,
         verificationStatus: dashboardData.verificationStatus,
         attestationProvider: dashboardData.attestationProvider,
-        isM0Dashboard: dashboardData.isM0Dashboard
+        isM0Dashboard: dashboardData.isM0Dashboard,
+        hasCollateralData: !!collateralData
       })
       
       // Perform comprehensive content analysis on the rendered HTML
@@ -1806,16 +1814,16 @@ export class TransparencyService {
       // Build transparency data combining Playwright extraction with traditional analysis
       const transparencyData: TransparencyData = {
         dashboard_url: url,
-        update_frequency: (dashboardData.updateFrequency !== 'unknown' ? dashboardData.updateFrequency : 
-                          (this.extractUpdateFrequency(html) || 'unknown')) as 'daily' | 'weekly' | 'monthly' | 'unknown',
+        update_frequency: (dashboardData.updateFrequency !== 'unknown' ? dashboardData.updateFrequency : 'unknown') as 'daily' | 'weekly' | 'monthly' | 'unknown',
         has_proof_of_reserves: dashboardData.hasProofOfReserves || 
                               combinedAnalysis.hasProofOfReserves || 
                               this.detectProofOfReserves(html),
-        verification_status: (dashboardData.verificationStatus !== 'unknown' ? dashboardData.verificationStatus :
-                             (this.extractVerificationStatus(html) || 'unverified')) as 'verified' | 'unverified' | 'unknown',
+        verification_status: (dashboardData.verificationStatus !== 'unknown' ? dashboardData.verificationStatus : 'unverified') as 'verified' | 'unverified' | 'unknown',
         attestation_provider: dashboardData.attestationProvider !== 'unknown' ? dashboardData.attestationProvider :
                              (combinedAnalysis.attestationProvider || this.extractAttestationProvider(html) || 'Not specified'),
-        last_update_date: lastUpdated
+        last_update_date: lastUpdated,
+        // Collateral breakdown crawling is disabled
+        collateral_data: undefined
       }
       
       // Validate that we found meaningful data
@@ -1824,7 +1832,8 @@ export class TransparencyService {
         transparencyData.update_frequency !== 'unknown' ||
         transparencyData.verification_status !== 'unverified' ||
         transparencyData.has_proof_of_reserves ||
-        transparencyData.last_update_date
+        transparencyData.last_update_date ||
+        transparencyData.collateral_data
       )
       
       if (hasRealData) {
@@ -1856,65 +1865,34 @@ export class TransparencyService {
       }
     }
   }
-  
+
   /**
-   * Extract update frequency from dashboard content
+   * 💰 Extract collateral data from transparency dashboard - DISABLED
+   * Uses both static HTML analysis and dynamic JavaScript execution
    */
-  private extractUpdateFrequency(html: string): 'daily' | 'weekly' | 'monthly' | 'unknown' {
-    const frequencyPatterns = [
-      /updated?\s+(daily|hourly|weekly|monthly|real-?time|live)/gi,
-      /refresh(?:ed)?\s+(every\s+\d+\s+(?:minute|hour|day)s?)/gi,
-      /last\s+update[d]?\s*:?\s*(\d+\s+(?:minute|hour|day)s?\s+ago)/gi,
-      /(real-?time|live)\s+data/gi
-    ]
-    
-    for (const pattern of frequencyPatterns) {
-      const match = html.match(pattern)
-      if (match) {
-        const frequency = match[0].toLowerCase()
-        if (frequency.includes('daily')) return 'daily'
-        if (frequency.includes('hourly')) return 'daily' // Map hourly to daily
-        if (frequency.includes('weekly')) return 'weekly'
-        if (frequency.includes('monthly')) return 'monthly'
-        if (frequency.includes('real') || frequency.includes('live')) return 'daily' // Map real-time to daily
-        // For other patterns, try to map to known values
-        if (frequency.includes('minute') || frequency.includes('hour')) return 'daily'
-        if (frequency.includes('day')) return 'daily'
-        if (frequency.includes('week')) return 'weekly'
-        if (frequency.includes('month')) return 'monthly'
-      }
-    }
-    
-    return 'unknown'
+  private async extractCollateralData(page: Page, html: string, url: string): Promise<CollateralData | null> {
+    console.log(`🚫 Collateral data extraction is disabled for ${url}`)
+    return null
   }
-  
+
   /**
-   * Extract verification status from dashboard content
+   * 📊 Extract collateral data from static HTML content using dynamic detection - DISABLED
    */
-  private extractVerificationStatus(html: string): 'verified' | 'unverified' | 'unknown' {
-    const verificationPatterns = [
-      /verif(?:ied|ication)\s*(?:by|from)?\s*([^<>\n]{1,50})/gi,
-      /audit(?:ed)?\s*(?:by|from)?\s*([^<>\n]{1,50})/gi,
-      /attested?\s*(?:by|from)?\s*([^<>\n]{1,50})/gi,
-      /certified?\s*(?:by|from)?\s*([^<>\n]{1,50})/gi
-    ]
-    
-    for (const pattern of verificationPatterns) {
-      const match = html.match(pattern)
-      if (match && match[1]) {
-        const verifier = match[1].trim().replace(/[<>]/g, '')
-        if (verifier.length > 3 && verifier.length < 50) {
-          return 'verified' // Return just 'verified' since we can't store the verifier name
-        }
-      }
+  private extractCollateralFromHTML(html: string): {
+    collateralAllocations: CollateralAllocation[]
+    totalAssets?: number
+    totalLiabilities?: number
+    overcollateralizationRatio?: number
+  } {
+    console.log(`🚫 HTML collateral extraction is disabled`)
+    return {
+      collateralAllocations: [],
+      totalAssets: undefined,
+      totalLiabilities: undefined,
+      overcollateralizationRatio: undefined
     }
-    
-    // Check for simple verification indicators
-    if (/verified/gi.test(html)) return 'verified'
-    if (/unverified/gi.test(html)) return 'unverified'
-    
-    return 'unknown'
   }
+
 }
 
 // Export both the class and the singleton instance

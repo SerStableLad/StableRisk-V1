@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts'
-import { TVLHistoryChart } from '@/components/tvl-history-chart'
+
 import { 
   TrendingUp, 
   ExternalLink, 
@@ -25,7 +25,6 @@ import {
   Activity,
   Globe,
   ArrowUpDown,
-  RefreshCw,
   ChevronDown,
   ChevronUp
 } from 'lucide-react'
@@ -41,6 +40,7 @@ interface Exchange {
   is_active: boolean
   trading_pairs: string[]
   website_url?: string
+  chain?: string
 }
 
 interface LiquidityPool {
@@ -58,18 +58,7 @@ interface LiquidityPool {
   risk_level: 'low' | 'medium' | 'high' | 'very_high'
 }
 
-interface TVLHistoryData {
-  timestamp: number
-  date: string
-  tvl: number
-  chain: string
-}
 
-interface ChainTVLHistory {
-  chain: string
-  data: TVLHistoryData[]
-  color: string
-}
 
 interface LiquidityData {
   total_volume_24h: number
@@ -104,8 +93,7 @@ interface LiquidityData {
     liquidity: number
     percentage: number
   }>
-  // Add historical TVL data for Phase 2 chart
-  historical_tvl?: ChainTVLHistory[]
+
   last_liquidity_crisis?: {
     date: string
     description: string
@@ -553,18 +541,9 @@ export function LiquiditySection({ ticker, data: propData }: LiquiditySectionPro
       {/* Liquidity Overview */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center justify-between">
-            <div className="flex items-center space-x-2">
-              <Waves className="h-5 w-5" />
-              <span>Liquidity Overview</span>
-            </div>
-            <div className="flex items-center space-x-2">
-              <Badge variant="default" className={`${getLiquidityScoreColor(data.liquidity_score)} bg-opacity-10`}>
-                <Target className="h-3 w-3 mr-1" />
-                Score: {data.liquidity_score}/100
-              </Badge>
-              {getRiskLevelBadge(data.liquidation_risk.risk_level)}
-            </div>
+          <CardTitle className="flex items-center space-x-2">
+            <Waves className="h-5 w-5" />
+            <span>Liquidity Overview</span>
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -682,19 +661,7 @@ export function LiquiditySection({ ticker, data: propData }: LiquiditySectionPro
         </CardContent>
       </Card>
 
-      {/* TVL History by Blockchain - Full Width */}
-      {data.historical_tvl && data.historical_tvl.length > 0 ? (
-        <TVLHistoryChart data={data.historical_tvl} />
-      ) : (
-        <Card>
-          <CardContent>
-            <div className="text-center py-8 text-muted-foreground">
-              <Activity className="h-12 w-12 mx-auto mb-2 opacity-50" />
-              <p>No historical TVL data available</p>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+
 
       {/* Major Exchanges */}
       <Card>
@@ -718,19 +685,11 @@ export function LiquiditySection({ ticker, data: propData }: LiquiditySectionPro
                       </p>
                     </div>
                   </div>
-                  <div className="flex items-center space-x-2">
-                    {getExchangeTypeBadge(exchange.type)}
-                    {exchange.is_active ? (
-                      <Badge variant="default" className="bg-green-100 text-green-800">
-                        <Zap className="h-3 w-3 mr-1" />
-                        Active
-                      </Badge>
-                    ) : (
-                      <Badge variant="destructive">
-                        <XCircle className="h-3 w-3 mr-1" />
-                        Inactive
-                      </Badge>
-                    )}
+                  <div className="text-right">
+                    <p className="text-sm text-muted-foreground">{exchange.type}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {exchange.is_active ? 'Active' : 'Inactive'}
+                    </p>
                   </div>
                 </div>
                 
@@ -753,11 +712,11 @@ export function LiquiditySection({ ticker, data: propData }: LiquiditySectionPro
                   </div>
                   
                   <div>
-                    <p className="text-muted-foreground">Last Updated</p>
+                    <p className="text-muted-foreground">Chain</p>
                     <div className="flex items-center space-x-1">
-                      <RefreshCw className="h-3 w-3 text-muted-foreground" />
+                      <Globe className="h-3 w-3 text-muted-foreground" />
                       <span className="font-medium">
-                        {Math.floor((Date.now() - new Date(exchange.last_updated).getTime()) / 60000)}m ago
+                        {exchange.chain || 'Unknown'}
                       </span>
                     </div>
                   </div>
@@ -842,19 +801,11 @@ export function LiquiditySection({ ticker, data: propData }: LiquiditySectionPro
                         </p>
                       </div>
                     </div>
-                    <div className="flex items-center space-x-2">
-                      {getRiskLevelBadge(pool.risk_level)}
-                      {pool.is_active ? (
-                        <Badge variant="default" className="bg-green-100 text-green-800">
-                          <Activity className="h-3 w-3 mr-1" />
-                          Active
-                        </Badge>
-                      ) : (
-                        <Badge variant="destructive">
-                          <XCircle className="h-3 w-3 mr-1" />
-                          Inactive
-                        </Badge>
-                      )}
+                    <div className="text-right">
+                      <p className="text-sm text-muted-foreground">{pool.risk_level} risk</p>
+                      <p className="text-xs text-muted-foreground">
+                        {pool.is_active ? 'Active' : 'Inactive'}
+                      </p>
                     </div>
                   </div>
                   
