@@ -13,7 +13,7 @@ export interface Job {
 
 export interface JobResult {
   success: boolean
-  data?: any
+  data?: Record<string, unknown>
   error?: string
 }
 
