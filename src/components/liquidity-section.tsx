@@ -25,7 +25,6 @@ import {
   Activity,
   Globe,
   ArrowUpDown,
-  RefreshCw,
   ChevronDown,
   ChevronUp
 } from 'lucide-react'
@@ -41,6 +40,7 @@ interface Exchange {
   is_active: boolean
   trading_pairs: string[]
   website_url?: string
+  chain?: string
 }
 
 interface LiquidityPool {
@@ -712,11 +712,11 @@ export function LiquiditySection({ ticker, data: propData }: LiquiditySectionPro
                   </div>
                   
                   <div>
-                    <p className="text-muted-foreground">Last Updated</p>
+                    <p className="text-muted-foreground">Chain</p>
                     <div className="flex items-center space-x-1">
-                      <RefreshCw className="h-3 w-3 text-muted-foreground" />
+                      <Globe className="h-3 w-3 text-muted-foreground" />
                       <span className="font-medium">
-                        {Math.floor((Date.now() - new Date(exchange.last_updated).getTime()) / 60000)}m ago
+                        {exchange.chain || 'Unknown'}
                       </span>
                     </div>
                   </div>

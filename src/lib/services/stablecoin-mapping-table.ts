@@ -140,12 +140,12 @@ export const STABLECOIN_TRANSPARENCY_MAPPING: Record<string, StablecoinMappingEn
     name: 'Noble Dollar (USDN)',
     transparency: {
       dashboard_url: 'https://dashboard.m0.org/',
-      attestation_provider: '', // To be determined from dashboard analysis
+      attestation_provider: 'm0 foundation', // To be determined from dashboard analysis
       update_frequency: 'unknown', // To be determined from dashboard analysis
-      has_proof_of_reserves: false, // Initial assumption, can be updated
-      verification_status: 'unknown' // To be determined from dashboard analysis
+      has_proof_of_reserves: true, // Initial assumption, can be updated
+      verification_status: 'verified' // To be determined from dashboard analysis
     },
-    audit_folder_url: 'https://docs.m0.org/portal/technical/audits',
+    audit_folder_url: '',
     lastVerified: '2025-01-25',
     genesis_date: '2024-07-15'
   },

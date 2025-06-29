@@ -387,7 +387,8 @@ async function DashboardContent({ ticker }: { ticker: string }) {
                 market_depth_1_percent: dex.liquidity * 0.1,
                 last_updated: new Date().toISOString(),
                 is_active: true,
-                trading_pairs: [`${ticker}/USDC`, `${ticker}/ETH`]
+                trading_pairs: [`${ticker}/USDC`, `${ticker}/ETH`],
+                chain: dex.chain
               })) || [],
               liquidity_pools: [],
               market_depth_analysis: {

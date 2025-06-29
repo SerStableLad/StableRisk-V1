@@ -83,3 +83,12 @@ node_modules/
 *.sln
 *.sw?
 # OS specific
+
+# Documentation and analysis files
+COLLATERAL_ANALYSIS_SUMMARY.md
+COLLATERAL_BREAKDOWN_FIXED.md
+COLLATERAL_FEATURE_COMPLETE.md
+COLLATERAL_UI_SUMMARY.md
+dynamic-transparency-architecture.md
+ENHANCED_COLLATERAL_DETECTION.md
+IMPLEMENTATION_PLAN.md

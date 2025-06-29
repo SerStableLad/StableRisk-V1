@@ -386,6 +386,13 @@ class DynamicContentExtractor extends ExtractionMethod {
         
         return allocations.length > 0 ? { allocations } : null
       })
+      
+      return tableData
+    } catch (error) {
+      console.warn('Table extraction failed:', error)
+      return null
+    }
+  }
 
   private async extractFromText(page: Page): Promise<Partial<ExtractedData> | null> {
     try {
