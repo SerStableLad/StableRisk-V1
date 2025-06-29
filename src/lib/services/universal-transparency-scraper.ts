@@ -641,7 +641,6 @@ class MultiMethodExtractor {
         }
       } catch (error) {
         console.warn(`❌ Method ${method.name} failed:`, error)
-        continue
       }
     }
     
