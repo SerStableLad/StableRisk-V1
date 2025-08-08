@@ -70,7 +70,11 @@ async function getAssessment(ticker: string): Promise<any | { error: string; err
     console.log(`Successfully fetched assessment for ${ticker}:`, {
       name: assessment.info.name,
       symbol: assessment.info.symbol,
-      overallScore: assessment.risk_scores.overall
+      overallScore: assessment.risk_scores.overall,
+      hasCollateralData: !!assessment.collateral_data,
+      hasTransparencyCollateralData: !!assessment.transparency?.collateral_data,
+      hasCollateralDiscovery: !!assessment.collateral_discovery?.primary_result?.data,
+      collateralDataKeys: assessment.collateral_data ? Object.keys(assessment.collateral_data) : null
     })
     
     return assessment
@@ -338,6 +342,11 @@ async function DashboardContent({ ticker }: { ticker: string }) {
             data={assessment.transparency ? {
               dashboard_url: assessment.transparency.dashboard_url,
               has_proof_of_reserves: assessment.transparency.has_proof_of_reserves,
+              verification_status: assessment.transparency.verification_status || 'unverified',
+              attestation_provider: assessment.transparency.attestation_provider,
+              attestation_url: assessment.transparency.attestation_url,
+              update_frequency: assessment.transparency.update_frequency,
+              last_update_date: assessment.transparency.last_update_date || new Date().toISOString().split('T')[0],
               proof_of_reserves_score: assessment.risk_scores?.transparency || 0,
               attestation_providers: assessment.transparency.attestation_provider ? [{
                 name: assessment.transparency.attestation_provider,
@@ -347,12 +356,10 @@ async function DashboardContent({ ticker }: { ticker: string }) {
                 report_url: assessment.transparency.attestation_url,
                 is_verified: assessment.transparency.verification_status === 'verified'
               }] : [],
-              update_frequency: assessment.transparency.update_frequency,
               is_verified_source: assessment.transparency.verification_status === 'verified',
               transparency_issues: [],
-              last_updated: assessment.transparency.last_update_date || new Date().toISOString().split('T')[0],
-              // Use real collateral data from transparency service
-              collateral_data: assessment.transparency.collateral_data || null,
+              // Add collateral data if available - check multiple locations
+              collateral_data: assessment.collateral_data || assessment.transparency?.collateral_data || (assessment.collateral_discovery?.primary_result?.data) || undefined,
               // Reserve composition data - HIDDEN FOR NOW
               /* 
               reserve_composition: {
@@ -387,8 +394,7 @@ async function DashboardContent({ ticker }: { ticker: string }) {
                 market_depth_1_percent: dex.liquidity * 0.1,
                 last_updated: new Date().toISOString(),
                 is_active: true,
-                trading_pairs: [`${ticker}/USDC`, `${ticker}/ETH`],
-                chain: dex.chain
+                trading_pairs: [`${ticker}/USDC`, `${ticker}/ETH`]
               })) || [],
               liquidity_pools: [],
               market_depth_analysis: {
@@ -416,7 +422,8 @@ async function DashboardContent({ ticker }: { ticker: string }) {
                 : [],
               // Add chain distribution data for the volume pie chart
               chain_distribution: assessment.liquidity.chain_distribution || [],
-
+              // Add historical TVL data for Phase 2 chart
+              historical_tvl: assessment.liquidity.historical_tvl || []
             } : null} 
           />
         </div>

@@ -5,6 +5,9 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Progress } from '@/components/ui/progress'
+import { Skeleton } from '@/components/ui/skeleton'
+import { TransparencyData } from '@/lib/types'
 
 import { 
   Eye, 
@@ -19,7 +22,9 @@ import {
   Building,
   PieChart as PieChartIcon,
   TrendingUp,
-  DollarSign
+  DollarSign,
+  Info,
+  Layers
 } from 'lucide-react'
 
 interface AttestationProvider {
@@ -33,26 +38,23 @@ interface AttestationProvider {
 
 
 
-interface TransparencyData {
-  dashboard_url?: string
-  has_proof_of_reserves: boolean
-  proof_of_reserves_score: number
-  attestation_providers: AttestationProvider[]
-  update_frequency: 'real-time' | 'daily' | 'weekly' | 'monthly' | 'none' | 'unknown'
-  last_updated: string
-  transparency_issues: string[]
-  reserve_composition?: {
-    cash_and_equivalents: number
-    treasury_bills: number
-    other_investments: number
-    crypto_assets?: number
-  }
-  is_verified_source: boolean
-}
+// Remove local TransparencyData interface - use global one from types.ts
+// The global TransparencyData interface includes collateral_data which we need
 
 interface TransparencySectionProps {
   ticker: string
-  data?: TransparencyData | null
+  data?: (TransparencyData & {
+    proof_of_reserves_score: number
+    attestation_providers: AttestationProvider[]
+    transparency_issues: string[]
+    reserve_composition?: {
+      cash_and_equivalents: number
+      treasury_bills: number
+      other_investments: number
+      crypto_assets?: number
+    }
+    is_verified_source: boolean
+  }) | null
 }
 
 const getUpdateFrequencyBadge = (frequency: string) => {
@@ -115,39 +117,107 @@ const formatPercentage = (value: number) => {
   return `${value.toFixed(1)}%`
 }
 
+// Collateral Loading Skeleton Component
+const CollateralSkeleton = () => (
+  <Card>
+    <CardHeader>
+      <CardTitle className="flex items-center space-x-2">
+        <Layers className="h-5 w-5" />
+        <span>Collateral Breakdown</span>
+        <Skeleton className="h-6 w-20 rounded-full ml-2" />
+      </CardTitle>
+      <Skeleton className="h-4 w-72 mt-2" />
+    </CardHeader>
+    <CardContent className="space-y-6">
+      {/* Total Assets Overview Skeleton */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 bg-muted/30 rounded-lg">
+        <div className="text-center space-y-2">
+          <Skeleton className="h-4 w-20 mx-auto" />
+          <Skeleton className="h-8 w-16 mx-auto" />
+        </div>
+        <div className="text-center space-y-2">
+          <Skeleton className="h-4 w-24 mx-auto" />
+          <Skeleton className="h-8 w-16 mx-auto" />
+        </div>
+        <div className="text-center space-y-2">
+          <Skeleton className="h-4 w-28 mx-auto" />
+          <Skeleton className="h-8 w-16 mx-auto" />
+        </div>
+      </div>
+
+      {/* Asset Allocation List Skeleton */}
+      <div className="space-y-4">
+        <div className="flex items-center space-x-2">
+          <Skeleton className="h-4 w-4" />
+          <Skeleton className="h-4 w-24" />
+        </div>
+        
+        <div className="space-y-3">
+          {[...Array(4)].map((_, index) => (
+            <div key={index} className="flex items-center justify-between p-4 border rounded-lg">
+              <div className="flex-1 space-y-2">
+                <Skeleton className="h-6 w-32" />
+                <Skeleton className="h-4 w-48" />
+              </div>
+              <div className="text-right space-y-1">
+                <Skeleton className="h-6 w-20" />
+                <Skeleton className="h-4 w-12" />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Extraction Metadata Skeleton */}
+      <div className="p-4 bg-muted/20 rounded-lg space-y-2">
+        <div className="flex items-center space-x-2">
+          <Skeleton className="h-4 w-4" />
+          <Skeleton className="h-4 w-32" />
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <Skeleton className="h-4 w-40" />
+          <Skeleton className="h-4 w-36" />
+          <Skeleton className="h-4 w-32" />
+          <Skeleton className="h-8 w-32" />
+        </div>
+      </div>
+    </CardContent>
+  </Card>
+)
+
 
 
 
 
 export function TransparencySection({ ticker, data: propData }: TransparencySectionProps) {
-  // Debug logging to see what data we're receiving
+  // Enhanced debug logging to see what data we're receiving
   console.log('🔍 TransparencySection Debug:', {
     ticker,
-    hasData: !!propData
+    hasData: !!propData,
+    hasCollateralData: !!propData?.collateral_data,
+    collateralAllocationsCount: propData?.collateral_data?.collateral_allocations?.length || 0,
+    collateralData: propData?.collateral_data ? {
+      totalAssets: propData.collateral_data.total_assets,
+      totalLiabilities: propData.collateral_data.total_liabilities,
+      confidence: propData.collateral_data.confidence,
+      allocationsLength: propData.collateral_data.collateral_allocations?.length || 0,
+      allocations: propData.collateral_data.collateral_allocations?.slice(0, 2) // Show first 2 for debugging
+    } : null
   })
 
   // Use real data only - no fallback to mock data
   if (!propData) {
     return (
-      <div className="space-y-6">
-        <div className="text-center space-y-2">
-          <h2 className="text-3xl font-bold">Transparency & Proof of Reserves</h2>
-          <p className="text-muted-foreground">Unable to retrieve transparency data</p>
+      <div className="space-y-4">
+        <div className="text-center space-y-1">
+          <h2 className="text-2xl font-bold">Transparency & Proof of Reserves</h2>
+          <p className="text-sm text-muted-foreground">Unable to retrieve transparency data</p>
         </div>
         
-        {/* Show placeholder card when no data is available */}
         <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center space-x-2">
-              <Eye className="h-5 w-5" />
-              <span>Transparency Dashboard</span>
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-center py-8 text-muted-foreground">
-              <Eye className="h-12 w-12 mx-auto mb-2 text-muted-foreground/50" />
-              <p>No transparency dashboard data available</p>
-            </div>
+          <CardContent className="text-center py-6">
+            <Eye className="h-8 w-8 mx-auto mb-2 text-muted-foreground/50" />
+            <p className="text-sm text-muted-foreground">No transparency data available</p>
           </CardContent>
         </Card>
       </div>
@@ -157,45 +227,49 @@ export function TransparencySection({ ticker, data: propData }: TransparencySect
   const data = propData
   
   return (
-    <div className="space-y-6">
-      {/* Section Header */}
-      <div className="text-center space-y-2">
-        <h2 className="text-3xl font-bold">Transparency & Proof of Reserves</h2>
-        <p className="text-muted-foreground">
-          Verification of stablecoin backing and reserve transparency
-        </p>
+    <div className="space-y-4">
+      {/* Compact Section Header */}
+      <div className="text-center">
+        <h2 className="text-2xl font-bold">Transparency & Proof of Reserves</h2>
       </div>
 
       {/* Transparency Issues Alert */}
       {data.transparency_issues.length > 0 && (
-        <Alert className="border-yellow-200 bg-yellow-50">
+        <Alert className="border-yellow-200 bg-yellow-50 py-2">
           <AlertTriangle className="h-4 w-4" />
-          <AlertTitle>Transparency Concerns</AlertTitle>
-          <AlertDescription>
-            <ul className="list-disc list-inside space-y-1">
-              {data.transparency_issues.map((issue, index) => (
-                <li key={index}>{issue}</li>
-              ))}
-            </ul>
+          <AlertTitle className="text-sm">Transparency Concerns</AlertTitle>
+          <AlertDescription className="text-xs mt-1">
+            {data.transparency_issues.join(', ')}
           </AlertDescription>
         </Alert>
       )}
 
-      {/* Main Transparency Dashboard */}
+      {/* Single Consolidated Card */}
       <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center space-x-2">
-            <Eye className="h-5 w-5" />
-            <span>Transparency Dashboard</span>
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-muted-foreground">Proof of Reserves Score</p>
-              <p className="text-2xl font-bold">
-                {data.proof_of_reserves_score}/100
-              </p>
+        <CardContent className="p-4 space-y-4">
+          {/* Top Row: Score + Key Metrics */}
+          <div className="flex items-start justify-between">
+            <div className="space-y-1">
+              <p className="text-xs text-muted-foreground">Proof of Reserves Score</p>
+              <p className="text-2xl font-bold">{data.proof_of_reserves_score}/100</p>
+            </div>
+            
+            {/* Key Metrics in Horizontal Layout */}
+            <div className="grid grid-cols-3 gap-3 text-xs">
+              <div className="text-center">
+                <p className="text-muted-foreground">Updated</p>
+                <p className="font-medium">{new Date(data.last_update_date || Date.now()).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</p>
+              </div>
+              <div className="text-center">
+                <p className="text-muted-foreground">Status</p>
+                <p className={`font-medium ${data.is_verified_source ? 'text-green-600' : 'text-red-600'}`}>
+                  {data.is_verified_source ? 'Verified' : 'Unverified'}
+                </p>
+              </div>
+              <div className="text-center">
+                <p className="text-muted-foreground">Providers</p>
+                <p className="font-medium">{data.attestation_providers.length}</p>
+              </div>
             </div>
             
             {data.dashboard_url && (
@@ -203,132 +277,198 @@ export function TransparencySection({ ticker, data: propData }: TransparencySect
                 variant="outline" 
                 size="sm"
                 onClick={() => window.open(data.dashboard_url, '_blank', 'noopener,noreferrer')}
-                className="flex items-center space-x-2"
+                className="flex items-center space-x-1 h-8 px-2"
               >
-                <ExternalLink className="h-4 w-4" />
-                <span>View Dashboard</span>
+                <ExternalLink className="h-3 w-3" />
+                <span className="text-xs">Dashboard</span>
               </Button>
             )}
           </div>
-          
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-            <div>
-              <p className="text-muted-foreground">Last Updated</p>
-              <p className="font-medium">{new Date(data.last_updated).toLocaleDateString()}</p>
-            </div>
-            <div>
-              <p className="text-muted-foreground">Update Frequency</p>
-              <p className="font-medium capitalize">{data.update_frequency.replace('_', ' ')}</p>
-            </div>
-            <div>
-              <p className="text-muted-foreground">Source Status</p>
-              <p className={`font-medium ${data.is_verified_source ? 'text-green-600' : 'text-red-600'}`}>
-                {data.is_verified_source ? 'Verified' : 'Unverified'}
-              </p>
-            </div>
-            <div>
-              <p className="text-muted-foreground">Providers</p>
-              <p className="font-medium">{data.attestation_providers.length} active</p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
 
-
-
-      {/* Attestation Providers */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center space-x-2">
-            <Shield className="h-5 w-5" />
-            <span>Attestation Providers</span>
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            {data.attestation_providers.map((provider, index) => (
-              <div key={index} className="flex items-center justify-between p-4 border rounded-lg">
-                <div className="space-y-2">
-                  <div className="flex items-center space-x-2">
-                    <h4 className="font-medium">{provider.name}</h4>
-                    {getProviderTypeBadge(provider.type)}
-                    {provider.is_verified && (
-                      <CheckCircle className="h-4 w-4 text-green-600" />
-                    )}
+          {/* Collateral Data - Comprehensive but Compact */}
+          {data.collateral_data && (data.collateral_data.total_assets || data.collateral_data.collateral_allocations?.length > 0 || data.collateral_data.confidence) && (
+            <div className="space-y-3 border-t pt-3">
+              {/* Financial Overview - Horizontal Layout */}
+              <div className="flex items-center justify-between p-3 bg-muted/30 rounded-lg">
+                {data.collateral_data.total_assets && (
+                  <div className="text-center">
+                    <p className="text-xs text-muted-foreground">Total Assets</p>
+                    <p className="text-lg font-bold text-green-600">
+                      {formatCurrency(data.collateral_data.total_assets)}
+                    </p>
                   </div>
-                  <div className="flex items-center space-x-4 text-sm text-muted-foreground">
-                    <div className="flex items-center space-x-1">
-                      <Building className="h-4 w-4" />
-                      <span>Reputation: </span>
-                      <span className={`font-medium ${getReputationColor(provider.reputation_score)}`}>
-                        {provider.reputation_score.toFixed(1)}/10
-                      </span>
+                )}
+                {data.collateral_data.total_liabilities && (
+                  <div className="text-center">
+                    <p className="text-xs text-muted-foreground">Tokens Minted</p>
+                    <p className="text-lg font-bold text-blue-600">
+                      {formatCurrency(data.collateral_data.total_liabilities)}
+                    </p>
+                  </div>
+                )}
+                {data.collateral_data.overcollateralization_ratio && (
+                  <div className="text-center">
+                    <p className="text-xs text-muted-foreground">Collat. Rate</p>
+                    <p className={`text-lg font-bold ${data.collateral_data.overcollateralization_ratio >= 1.0 ? 'text-green-600' : 'text-red-600'}`}>
+                      {(data.collateral_data.overcollateralization_ratio * 100).toFixed(1)}%
+                    </p>
+                  </div>
+                )}
+                {data.collateral_data.confidence !== undefined && data.collateral_data.confidence !== null && (
+                  <Badge variant="secondary" className="text-xs">
+                    {Math.round(data.collateral_data.confidence * 100)}% confidence
+                  </Badge>
+                )}
+              </div>
+
+              {/* Asset Allocation - Compact List */}
+              {data.collateral_data.collateral_allocations && data.collateral_data.collateral_allocations.length > 0 ? (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-sm font-semibold flex items-center space-x-1">
+                      <PieChartIcon className="h-4 w-4" />
+                      <span>Asset Allocation</span>
+                    </h4>
+                    <span className="text-xs text-muted-foreground">{data.collateral_data.collateral_allocations.length} types</span>
+                  </div>
+                  
+                  <div className="space-y-2 max-h-40 overflow-y-auto">
+                    {data.collateral_data.collateral_allocations.map((allocation, index) => (
+                    <div key={index} className="flex items-center justify-between p-2 border rounded-lg hover:bg-muted/30 transition-colors">
+                      <div className="flex items-center space-x-2 flex-1">
+                        <Badge 
+                          variant="outline" 
+                          className={`${getAssetTypeColor(allocation.asset_type)} text-xs py-0 px-1`}
+                        >
+                          {allocation.asset_type}
+                        </Badge>
+                        {allocation.percentage && (
+                          <div className="flex items-center space-x-2 flex-1">
+                            <div className="flex-1 bg-muted rounded-full h-1.5 max-w-20">
+                              <div 
+                                className="bg-primary h-1.5 rounded-full"
+                                style={{ width: `${Math.min(allocation.percentage, 100)}%` }}
+                              ></div>
+                            </div>
+                            <span className="text-xs font-medium w-10 text-right">
+                              {formatPercentage(allocation.percentage)}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                      
+                      {(allocation.market_value || allocation.value_usd) && (
+                        <div className="text-right">
+                          <p className="text-sm font-bold">
+                            {formatCurrency(allocation.market_value || allocation.value_usd || 0)}
+                          </p>
+                        </div>
+                      )}
                     </div>
-                    <div className="flex items-center space-x-1">
-                      <Calendar className="h-4 w-4" />
-                      <span>Last Report: {new Date(provider.last_report_date).toLocaleDateString()}</span>
-                    </div>
+                    ))}
                   </div>
                 </div>
-                
-                {provider.report_url && (
-                  <Button
-                    variant="outline"
+              ) : (
+                <div className="space-y-2">
+                  <h4 className="text-sm font-semibold flex items-center space-x-1">
+                    <PieChartIcon className="h-4 w-4" />
+                    <span>Asset Allocation</span>
+                  </h4>
+                  <div className="p-3 border rounded-lg text-center text-sm text-muted-foreground">
+                    Asset allocation data is being processed...
+                  </div>
+                </div>
+              )}
+
+              {/* Attestation Providers - Horizontal Compact */}
+              {data.attestation_providers && data.attestation_providers.length > 0 && (
+                <div className="space-y-2 border-t pt-3">
+                  <h4 className="text-sm font-semibold flex items-center space-x-1">
+                    <Shield className="h-4 w-4 text-blue-600" />
+                    <span>Third-Party Verification</span>
+                  </h4>
+                  
+                  <div className="space-y-1">
+                    {data.attestation_providers.map((provider, index) => (
+                      <div key={index} className="flex items-center justify-between p-2 bg-muted/20 rounded-lg">
+                        <div className="flex items-center space-x-2">
+                          <span className="text-sm font-medium">{provider.name}</span>
+                          {getProviderTypeBadge(provider.type)}
+                          {provider.is_verified && (
+                            <CheckCircle className="h-3 w-3 text-green-600" />
+                          )}
+                        </div>
+                        
+                        <div className="flex items-center space-x-3 text-xs text-muted-foreground">
+                          <span className={`font-medium ${getReputationColor(provider.reputation_score)}`}>
+                            {provider.reputation_score.toFixed(1)}/10
+                          </span>
+                          <span>{new Date(provider.last_report_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
+                          {provider.report_url && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => window.open(provider.report_url, '_blank', 'noopener,noreferrer')}
+                              className="h-6 px-1 text-xs"
+                            >
+                              <ExternalLink className="h-3 w-3" />
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Reserve Composition - Inline if available */}
+              {data.reserve_composition && (
+                <div className="flex items-center justify-between text-xs border-t pt-3">
+                  <div className="flex items-center space-x-4">
+                    <div className="flex items-center space-x-1">
+                      <span className="text-muted-foreground">Cash:</span>
+                      <span className="font-medium text-green-600">{data.reserve_composition.cash_and_equivalents}%</span>
+                    </div>
+                    <div className="flex items-center space-x-1">
+                      <span className="text-muted-foreground">Treasury:</span>
+                      <span className="font-medium text-blue-600">{data.reserve_composition.treasury_bills}%</span>
+                    </div>
+                    <div className="flex items-center space-x-1">
+                      <span className="text-muted-foreground">Other:</span>
+                      <span className="font-medium text-purple-600">{data.reserve_composition.other_investments}%</span>
+                    </div>
+                    {data.reserve_composition.crypto_assets !== undefined && (
+                      <div className="flex items-center space-x-1">
+                        <span className="text-muted-foreground">Crypto:</span>
+                        <span className="font-medium text-orange-600">{data.reserve_composition.crypto_assets}%</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Footer Info - Inline */}
+              <div className="flex items-center justify-between text-xs text-muted-foreground border-t pt-2">
+                <div className="flex items-center space-x-1">
+                  <Clock className="h-3 w-3" />
+                  <span>Updated: {data.collateral_data.last_updated ? new Date(data.collateral_data.last_updated).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : 'N/A'}</span>
+                </div>
+                {data.collateral_data.report_url && (
+                  <Button 
+                    variant="ghost" 
                     size="sm"
-                    onClick={() => window.open(provider.report_url, '_blank', 'noopener,noreferrer')}
-                    className="flex items-center space-x-2"
+                    onClick={() => window.open(data.collateral_data!.report_url, '_blank', 'noopener,noreferrer')}
+                    className="h-6 px-2 text-xs"
                   >
-                    <ExternalLink className="h-4 w-4" />
-                    <span>View Report</span>
+                    <ExternalLink className="h-3 w-3 mr-1" />
+                    Source Report
                   </Button>
                 )}
               </div>
-            ))}
-          </div>
+            </div>
+          )}
         </CardContent>
       </Card>
-
-      {/* Reserve Composition (if available) */}
-      {data.reserve_composition && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center space-x-2">
-              <TrendingUp className="h-5 w-5" />
-              <span>Reserve Composition</span>
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div className="text-center p-4 border rounded-lg">
-                <p className="text-sm text-muted-foreground">Cash & Equivalents</p>
-                <p className="text-xl font-bold text-green-600">
-                  {data.reserve_composition.cash_and_equivalents}%
-                </p>
-              </div>
-              <div className="text-center p-4 border rounded-lg">
-                <p className="text-sm text-muted-foreground">Treasury Bills</p>
-                <p className="text-xl font-bold text-blue-600">
-                  {data.reserve_composition.treasury_bills}%
-                </p>
-              </div>
-              <div className="text-center p-4 border rounded-lg">
-                <p className="text-sm text-muted-foreground">Other Investments</p>
-                <p className="text-xl font-bold text-purple-600">
-                  {data.reserve_composition.other_investments}%
-                </p>
-              </div>
-              {data.reserve_composition.crypto_assets !== undefined && (
-                <div className="text-center p-4 border rounded-lg">
-                  <p className="text-sm text-muted-foreground">Crypto Assets</p>
-                  <p className="text-xl font-bold text-orange-600">
-                    {data.reserve_composition.crypto_assets}%
-                  </p>
-                </div>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      )}
     </div>
   )
 }
