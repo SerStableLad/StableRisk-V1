@@ -8,7 +8,7 @@ export interface StablecoinInfo {
   market_cap: number
   genesis_date: string
   blockchain?: string // Network/blockchain
-  pegging_type: 'fiat-backed' | 'crypto-collateralized' | 'algorithmic' | 'commodity-backed'
+  pegging_type: 'fiat-backed' | 'crypto-collateralized' | 'algorithmic' | 'commodity-backed' | 'over_collateralized'
   commodity?: string // For commodity-backed stablecoins
   categories?: string[] // CoinGecko categories for validation
   // Official links from data providers like CoinGecko
@@ -31,6 +31,13 @@ export interface RiskScores {
   liquidity: number
   // oracle: number // Disabled oracle functionality
   audit: number | null // Can be null when no audit data is found
+}
+
+// Logging interface
+export interface LogEntry {
+  level: 'debug' | 'info' | 'warn' | 'error';
+  message: string;
+  metadata?: Record<string, any>;
 }
 
 // New tiered response types
@@ -60,6 +67,10 @@ export interface StablecoinTier2Data {
     transparency: number
     preliminary_overall: number
   }
+  ai_market_insights?: {
+    insights: string
+    confidence: number
+  }
 }
 
 export interface StablecoinTier3Data {
@@ -71,6 +82,30 @@ export interface StablecoinTier3Data {
   audits: AuditInfo[]
   complete_risk_scores: RiskScores
   data_sources: string[]
+  // NEW: Comprehensive collateral discovery data
+  collateral_discovery?: {
+    primary_result: CollateralDiscoveryResult
+    final_confidence: number
+    discovery_tier: 1 | 2 | 3 | 4
+    discovery_method: 'manual_mapping' | 'ai_extraction' | 'on_chain_analysis' | 'heuristic_fallback'
+    total_cost_usd: number
+    quality_assurance: {
+      cross_validation_performed: boolean
+      consistency_score: number
+      data_completeness: number
+    }
+  } | null
+  comprehensive_ai_analysis?: {
+    risk_analysis?: {
+      content: string
+      confidence: number
+    }
+    transparency_analysis?: {
+      content: string
+      confidence: number
+    }
+    generated_at: string
+  }
 }
 
 export interface TieredStablecoinAssessment {
@@ -132,6 +167,32 @@ export interface LiquidityData {
   dex_distribution: DexLiquidity[]
   concentration_risk: 'low' | 'medium' | 'high'
   chain_distribution: ChainLiquidity[]
+  total_volume_24h?: any
+  total_volume_7d?: number
+  volume_change_24h?: number
+  market_cap?: any
+  liquidity_score?: any
+  exchanges?: any
+  liquidity_pools?: any[]
+  market_depth_analysis?: {
+    depth_1_percent: number
+    depth_5_percent: number
+    depth_10_percent: number
+    average_spread: number
+  }
+  dex_liquidity_by_chain?: any
+  overall_liquidity_health?: string
+  volume_to_liquidity_ratio?: number
+  historical_tvl?: Array<{
+    chain: string
+    data: Array<{
+      timestamp: number
+      date: string
+      tvl: number
+      chain: string
+    }>
+    color: string
+  }>
 }
 
 export interface DexLiquidity {
@@ -154,10 +215,31 @@ export interface StablecoinAssessment {
   peg_stability: PegStabilityData
   audits: AuditInfo[]
   transparency: TransparencyData
-  // oracle: OracleData // Disabled oracle functionality
+  oracle: OracleData // Re-enabled for interface compatibility
   liquidity: LiquidityData
+  // Add collateral data at the top level for easy access
+  collateral_data?: CollateralData
+  // NEW: Comprehensive collateral discovery data
+  collateral_discovery?: {
+    primary_result: CollateralDiscoveryResult
+    final_confidence: number
+    discovery_tier: 1 | 2 | 3 | 4
+    discovery_method: 'manual_mapping' | 'ai_extraction' | 'on_chain_analysis' | 'heuristic_fallback'
+    total_cost_usd: number
+    quality_assurance: {
+      cross_validation_performed: boolean
+      consistency_score: number
+      data_completeness: number
+    }
+    fallback_results?: CollateralDiscoveryResult[]
+  } | null
   last_updated: string
   data_sources: string[]
+  ai_insights?: {
+    risk_analysis: string
+    confidence: number
+    ai_metadata: any
+  }
 }
 
 // API Response types
@@ -217,6 +299,8 @@ export interface RateLimitInfo {
 export interface CollateralAllocation {
   asset_type: string // e.g., "Cash", "Treasury Bills", "Commercial Paper"
   market_value?: number // Dollar value
+  value_usd?: number // Dollar value (alternative naming)
+  amount_usd?: number // Dollar value (alternative naming)
   percentage?: number // Percentage of total (0-100)
   description?: string // Additional details about the asset
 }
@@ -229,4 +313,160 @@ export interface CollateralData {
   last_updated?: string // ISO date string
   report_url?: string // URL to the source report
   confidence: number // Confidence score (0-1) for the extracted data
+  confidence_score?: number // Alternative name for confidence (0-1)
+  extraction_method?: 'dom_parsing' | 'ai_extraction' | 'hybrid' | 'manual_mapping' | 'on_chain_analysis' | 'heuristic_fallback' | 'static_fallback' // Method used for extraction
+}
+
+// AI-powered collateral extraction interfaces
+export interface AICollateralExtractionConfig {
+  maxCostPerExtraction: number // Maximum cost in USD per extraction
+  confidenceThreshold: number // Minimum confidence threshold (0-1)
+  fallbackToAI: boolean // Whether to fallback to AI when DOM parsing fails
+  cacheBasedOnConfidence: boolean // Use confidence-based cache TTL
+  enableCaching?: boolean // Enable caching functionality
+  fallbackStrategies?: string[] // Fallback strategies to use
+  circuitBreakerEnabled?: boolean // Enable circuit breaker functionality
+  timeoutMs?: number // Timeout in milliseconds
+}
+
+export interface ExtractionResult {
+  success: boolean
+  data?: CollateralData
+  error?: string
+  cost_usd: number
+  extraction_time_ms: number
+  method_used: 'dom_parsing' | 'ai_extraction' | 'hybrid' | 'manual_mapping' | 'on_chain_analysis' | 'heuristic_fallback'
+  confidence: number
+}
+
+export interface ConfidenceBasedCacheEntry {
+  data: CollateralData
+  confidence: number
+  cachedAt: number
+  ttl: number
+}
+
+export interface AIExtractionMetrics {
+  totalCost: number
+  averageConfidence: number
+  extractionCount: number
+  successRate: number
+  averageLatency: number
+}
+
+export interface CircuitBreakerStatus {
+  isOpen: boolean
+  failureCount: number
+  lastFailure?: number
+  nextRetry?: number
+}
+
+export interface WebsiteFormat {
+  type: 'html' | 'pdf' | 'spa' | 'protected'
+  requiresAuth: boolean
+  hasJavaScript: boolean
+  estimatedComplexity: 'low' | 'medium' | 'high'
+}
+
+export interface ExtractionStrategy {
+  name: string
+  priority: number
+  estimatedCost: number
+  estimatedLatency: number
+  supportedFormats: WebsiteFormat['type'][]
+}
+
+export interface HybridExtractionResult {
+  domResult?: Partial<CollateralData>
+  aiResult?: Partial<CollateralData>  
+  combinedResult: CollateralData
+  confidence: number
+  totalCost: number
+  strategies: string[]
+}
+
+// Universal Collateral Discovery System Types
+
+export interface CollateralDiscoveryConfig {
+  enableTier1ManualMapping: boolean
+  enableTier2AIExtraction: boolean
+  enableTier3OnChain: boolean
+  enableTier4Heuristics: boolean
+  confidenceThresholds: {
+    tier1: number // 0.9-1.0 (manual mapping)
+    tier2: number // 0.6-0.9 (AI extraction)
+    tier3: number // 0.7-0.95 (on-chain)
+    tier4: number // 0.3-0.6 (heuristics)
+  }
+  fallbackStrategy: 'best_effort' | 'fail_fast'
+  maxCostPerDiscovery: number
+  firecrawlMcp?: any // Firecrawl MCP configuration
+}
+
+export interface OnChainCollateralData {
+  contract_address: string
+  chain: string
+  total_supply?: bigint
+  backing_assets?: Array<{
+    token_address: string
+    symbol: string
+    balance: bigint
+    value_usd: number
+  }>
+  reserves_ratio?: number
+  last_block_checked: number
+  data_freshness: 'real_time' | 'recent' | 'stale'
+  confidence: number
+  extraction_method: 'on_chain_read'
+}
+
+export interface ProtocolMechanism {
+  type: 'algorithmic' | 'centralized' | 'over_collateralized' | 'synthetic' | 'hybrid' | 'crypto-collateralized'
+  subtype?: string // e.g., 'rebase', 'burn_mint', 'cdp'
+  backing_mechanism: string
+  governance_model?: 'dao' | 'centralized' | 'hybrid'
+  stability_mechanism: string[]
+}
+
+export interface ProtocolSpecificHandler {
+  name: string
+  supportedMechanisms: ProtocolMechanism['type'][]
+  extractCollateralData(info: StablecoinInfo): Promise<CollateralDiscoveryResult>
+  getConfidenceScore(data: CollateralData): number
+  validateData(data: CollateralData): boolean
+}
+
+export interface CollateralDiscoveryResult {
+  source_tier: 1 | 2 | 3 | 4
+  discovery_method: 'manual_mapping' | 'ai_extraction' | 'on_chain_analysis' | 'heuristic_fallback'
+  data: CollateralData
+  confidence: number
+  cost_usd: number
+  extraction_time_ms: number
+  fallback_reason?: string
+}
+
+export interface UniversalCollateralOrchestrationResult {
+  primary_result: CollateralDiscoveryResult
+  fallback_results: CollateralDiscoveryResult[]
+  final_confidence: number
+  total_cost_usd: number
+  total_extraction_time_ms: number
+  quality_assurance: {
+    cross_validation_performed: boolean
+    consistency_score: number
+    data_completeness: number
+  }
+}
+
+export interface HeuristicCollateralData {
+  estimated_backing: 'full_reserves' | 'partial_reserves' | 'algorithmic' | 'over_collateralized'
+  confidence_level: 'high' | 'medium' | 'low'
+  reasoning: string[]
+  market_cap_based_estimate?: number
+  protocol_analysis?: {
+    governance_tokens: boolean
+    dao_treasury: boolean
+    insurance_funds: boolean
+  }
 } 

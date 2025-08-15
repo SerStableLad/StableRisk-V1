@@ -7,26 +7,25 @@ export const config = {
     baseUrl: 'https://api.coingecko.com/api/v3',
   },
   
-  // CoinMarketCap API (Fallback data source)
-  coinmarketcap: {
-    apiKey: process.env.COINMARKETCAP_API_KEY || 'your-coinmarketcap-api-key-here',
-    baseUrl: 'https://pro-api.coinmarketcap.com/v1',
-  },
-  
   // GeckoTerminal API (DEX liquidity data)
   geckoterminal: {
     baseUrl: 'https://api.geckoterminal.com/api/v2',
-  },
-  
-  // DeFiLlama API (Additional liquidity data)
-  defillama: {
-    baseUrl: 'https://api.llama.fi',
   },
   
   // GitHub API (Audit and repository data)
   github: {
     accessToken: process.env.GITHUB_ACCESS_TOKEN || 'your-github-access-token-here',
     baseUrl: 'https://api.github.com',
+  },
+  
+  // Gemini AI API (AI analysis and insights)
+  gemini: {
+    apiKey: process.env.GEMINI_API_KEY || 'your-gemini-api-key-here',
+    baseUrl: 'https://generativelanguage.googleapis.com/v1beta',
+    model: process.env.GEMINI_MODEL || 'gemini-2.0-flash-exp',
+    maxTokens: parseInt(process.env.GEMINI_MAX_TOKENS || '8192'),
+    temperature: parseFloat(process.env.GEMINI_TEMPERATURE || '0.1'),
+    rateLimitPerMinute: parseInt(process.env.GEMINI_RATE_LIMIT_PER_MINUTE || '60'),
   },
   
   // Application Configuration
@@ -61,13 +60,6 @@ export const endpoints = {
     simplePrices: '/simple/price',
   },
   
-  // CoinMarketCap endpoints
-  coinmarketcap: {
-    coinQuotes: '/cryptocurrency/quotes/latest',
-    coinInfo: '/cryptocurrency/info',
-    coinMap: '/cryptocurrency/map',
-  },
-  
   // GeckoTerminal endpoints
   geckoterminal: {
     networks: '/networks',
@@ -75,10 +67,8 @@ export const endpoints = {
     tokens: (network: string) => `/networks/${network}/tokens`,
   },
   
-  // DeFiLlama endpoints
-  defillama: {
-    protocols: '/protocols',
-    protocolData: (protocol: string) => `/protocol/${protocol}`,
-    tvl: '/tvl',
+  // Gemini AI endpoints
+  gemini: {
+    generateContent: (model: string) => `/models/${model}:generateContent`,
   },
 } as const 

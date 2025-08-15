@@ -1,0 +1,163 @@
+version: '3.8'
+
+services:
+  # Redis for job queue
+  redis:
+    image: redis:7-alpine
+    container_name: bg-jobs-redis
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - bg-jobs-network
+
+  # PostgreSQL for job persistence and results
+  postgres:
+    image: postgres:15-alpine
+    container_name: bg-jobs-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: background_jobs
+      POSTGRES_USER: bg_jobs_user
+      POSTGRES_PASSWORD: bg_jobs_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./sql/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bg_jobs_user -d background_jobs"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    networks:
+      - bg-jobs-network
+
+  # Background Jobs Service
+  bg-jobs-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: bg-jobs-service
+    ports:
+      - "3001:3001"
+    environment:
+      NODE_ENV: development
+      PORT: 3001
+      
+      # Redis configuration
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_DB: 0
+      REDIS_KEY_PREFIX: "bg_jobs:"
+      
+      # Database configuration
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: background_jobs
+      DB_USER: bg_jobs_user
+      DB_PASSWORD: bg_jobs_password
+      DB_SSL: false
+      DB_POOL_SIZE: 20
+      
+      # Service configuration
+      MAX_WORKERS: 5
+      POLLING_INTERVAL: 1000
+      ENABLE_METRICS: true
+      LOG_LEVEL: debug
+      
+      # API Keys (for testing)
+      API_KEY: test-api-key-123
+      ADMIN_API_KEY: admin-test-key-456
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./src:/app/src
+      - ./logs:/app/logs
+    command: npm run dev
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    networks:
+      - bg-jobs-network
+
+  # Redis Commander for Redis GUI
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    container_name: bg-jobs-redis-commander
+    ports:
+      - "8081:8081"
+    environment:
+      REDIS_HOSTS: "local:redis:6379"
+      HTTP_USER: admin
+      HTTP_PASSWORD: admin
+    depends_on:
+      - redis
+    networks:
+      - bg-jobs-network
+    profiles:
+      - tools
+
+  # pgAdmin for PostgreSQL GUI
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: bg-jobs-pgadmin
+    ports:
+      - "8080:80"
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@example.com
+      PGADMIN_DEFAULT_PASSWORD: admin
+      PGADMIN_CONFIG_SERVER_MODE: 'False'
+    depends_on:
+      - postgres
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    networks:
+      - bg-jobs-network
+    profiles:
+      - tools
+
+  # Nginx for load balancing (if scaling horizontally)
+  nginx:
+    image: nginx:alpine
+    container_name: bg-jobs-nginx
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf
+    depends_on:
+      - bg-jobs-service
+    networks:
+      - bg-jobs-network
+    profiles:
+      - loadbalancer
+
+volumes:
+  redis_data:
+    driver: local
+  postgres_data:
+    driver: local
+  pgadmin_data:
+    driver: local
+
+networks:
+  bg-jobs-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16

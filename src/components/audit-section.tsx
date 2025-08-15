@@ -268,219 +268,30 @@ const getScoreTrend = (score: number) => {
 }
 
 export function AuditSection({ ticker, data: propData }: AuditSectionProps) {
-  // Use real data only - no fallback to mock data
-  if (!propData) {
-    return (
-      <div className="space-y-6">
-        <div className="text-center space-y-2">
-          <h2 className="text-3xl font-bold">Security Audits & Code Review</h2>
-          <p className="text-muted-foreground">No audit data available</p>
-        </div>
-      </div>
-    )
-  }
-  
-  const data = propData
-  
-  const daysSinceLastAudit = Math.floor((Date.now() - new Date(data.last_audit_date).getTime()) / (1000 * 60 * 60 * 24))
-  const nextAuditDays = data.next_scheduled_audit 
-    ? Math.floor((new Date(data.next_scheduled_audit).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
-    : null
-
+  // Component is disabled - show disabled state
   return (
     <div className="space-y-6">
-      {/* Section Header */}
       <div className="text-center space-y-2">
         <h2 className="text-3xl font-bold">Security Audits & Code Review</h2>
-        <p className="text-muted-foreground">
-          Third-party security audits and smart contract verification
-        </p>
+        <p className="text-muted-foreground">Smart contract audit analysis is temporarily disabled</p>
       </div>
-
-      {/* Audit Issues Alert */}
-      {data.audit_issues.length > 0 && (
-        <Alert className="border-yellow-200 bg-yellow-50">
-          <AlertTriangle className="h-4 w-4" />
-          <AlertTitle>Audit Concerns</AlertTitle>
-          <AlertDescription>
-            <ul className="list-disc list-inside space-y-1">
-              {data.audit_issues.map((issue, index) => (
-                <li key={index}>{issue}</li>
-              ))}
-            </ul>
-          </AlertDescription>
-        </Alert>
-      )}
-
-      {/* Audit Overview */}
-      <Card>
+      
+      <Card className="opacity-60">
         <CardHeader>
-          <CardTitle className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-            <div className="flex items-center space-x-2">
-              <Shield className="h-5 w-5" />
-              <span>Audit Overview</span>
-            </div>
+          <CardTitle className="flex items-center space-x-2">
+            <Shield className="h-5 w-5" />
+            <span>Audit Analysis - Disabled</span>
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div className="text-center p-4 border rounded-lg">
-              <p className="text-sm text-muted-foreground">Coverage Score</p>
-              <div className="flex items-center justify-center space-x-2">
-                <p className={`text-2xl font-bold ${getScoreColor(data.audit_coverage_score)}`}>
-                  {data.audit_coverage_score}%
-                </p>
-                {getScoreTrend(data.audit_coverage_score)}
-              </div>
-            </div>
-            
-            <div className="text-center p-4 border rounded-lg">
-              <p className="text-sm text-muted-foreground">Critical Issues</p>
-              <p className={`text-2xl font-bold ${data.critical_issues_count > 0 ? 'text-red-600' : 'text-green-600'}`}>
-                {data.critical_issues_count}
-              </p>
-            </div>
-            
-            <div className="text-center p-4 border rounded-lg">
-              <p className="text-sm text-muted-foreground">High Issues</p>
-              <p className={`text-2xl font-bold ${data.high_issues_count > 0 ? 'text-orange-600' : 'text-green-600'}`}>
-                {data.high_issues_count}
-              </p>
-            </div>
-            
-            <div className="text-center p-4 border rounded-lg">
-              <p className="text-sm text-muted-foreground">Issues Resolved</p>
-              <p className="text-2xl font-bold text-blue-600">
-                {data.total_issues_resolved}
-              </p>
-            </div>
-          </div>
-          
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-            <div>
-              <p className="text-muted-foreground">Last Audit</p>
-              <p className="font-medium">
-                {new Date(data.last_audit_date).toLocaleDateString()} ({daysSinceLastAudit} days ago)
-              </p>
-            </div>
-            
-            <div>
-              <p className="text-muted-foreground">Audit Frequency</p>
-              <p className="font-medium capitalize">{data.audit_frequency.replace('_', ' ')}</p>
-            </div>
-            
-            <div>
-              <p className="text-muted-foreground">Next Scheduled</p>
-              <p className="font-medium">
-                {data.next_scheduled_audit 
-                  ? `${new Date(data.next_scheduled_audit).toLocaleDateString()} (${nextAuditDays} days)`
-                  : 'Not scheduled'
-                }
-              </p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Recent Audits */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center space-x-2">
-            <FileText className="h-5 w-5" />
-            <span>Recent Audit Reports</span>
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {data.recent_audits.map((audit, index) => (
-              <div key={index} className="border rounded-lg p-4">
-                <div className="flex items-center mb-4">
-                  <div className="flex items-center space-x-3">
-                    <Building className="h-5 w-5 text-muted-foreground" />
-                    <div>
-                      <h4 className="font-medium">{audit.firm_name}</h4>
-                      <p className="text-sm text-muted-foreground">
-                        {audit.methodology}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-                
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                  <div>
-                    <p className="text-sm text-muted-foreground">Audit Date</p>
-                    <div className="flex items-center space-x-2">
-                      <Calendar className="h-4 w-4 text-muted-foreground" />
-                      <span className="font-medium">{new Date(audit.audit_date).toLocaleDateString()}</span>
-                    </div>
-                  </div>
-                  
-                  <div>
-                    <p className="text-sm text-muted-foreground">Findings</p>
-                    <p className="font-medium">
-                      {audit.findings.length} critical/high issue{audit.findings.length !== 1 ? 's' : ''} found
-                    </p>
-                  </div>
-                </div>
-                
-                <div className="mb-4">
-                  <p className="text-sm text-muted-foreground mb-2">Coverage Areas</p>
-                  <p className="text-sm">
-                    {audit.coverage_areas.join(', ')}
-                  </p>
-                </div>
-                
-                {audit.findings.length > 0 && (
-                  <div className="mb-4">
-                    <p className="text-sm text-muted-foreground mb-2">Key Findings</p>
-                    <div className="space-y-2">
-                      {audit.findings.map((finding, findingIndex) => (
-                        <div key={findingIndex} className="border rounded p-3 text-sm">
-                          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-2">
-                            <div className="flex items-center space-x-2 min-w-0 flex-1">
-                              <span className="font-medium truncate">{finding.title}</span>
-                              <span className="text-xs text-muted-foreground">({finding.severity})</span>
-                            </div>
-                            <div className="flex items-center space-x-1 flex-shrink-0">
-                              {getStatusIcon(finding.status)}
-                              <span className="text-xs text-muted-foreground capitalize whitespace-nowrap">
-                                {finding.status.replace('_', ' ')}
-                              </span>
-                            </div>
-                          </div>
-                          <p className="text-muted-foreground mb-2">{finding.description}</p>
-                          <div className="flex items-center space-x-4 text-xs text-muted-foreground">
-                            <span>Found: {new Date(finding.date_found).toLocaleDateString()}</span>
-                            {finding.date_resolved && (
-                              <span>Resolved: {new Date(finding.date_resolved).toLocaleDateString()}</span>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                
-                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                  <div className="text-sm text-muted-foreground">
-                    {Math.floor((Date.now() - new Date(audit.audit_date).getTime()) / (1000 * 60 * 60 * 24))} days ago
-                  </div>
-                  {audit.report_url && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => window.open(audit.report_url, '_blank', 'noopener,noreferrer')}
-                      className="flex items-center space-x-1.5 text-xs"
-                    >
-                      <FileText className="h-3 w-3" />
-                      <span className="hidden xs:inline">View </span>Report
-                      <ExternalLink className="h-3 w-3" />
-                    </Button>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
+          <Alert className="border-yellow-200 bg-yellow-50">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertTitle>Service Temporarily Disabled</AlertTitle>
+            <AlertDescription>
+              Smart contract audit discovery and analysis has been temporarily disabled. 
+              This feature will be re-enabled in a future update.
+            </AlertDescription>
+          </Alert>
         </CardContent>
       </Card>
     </div>

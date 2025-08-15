@@ -77,7 +77,7 @@ const getUpdateFrequencyBadge = (frequency: string) => {
 const getProviderTypeBadge = (type: string) => {
   switch (type) {
     case 'audit_firm':
-      return <Badge variant="default" className="bg-green-100 text-green-800">Audit Firm</Badge>
+      return null // Remove audit firm badge
     case 'blockchain_analytics':
       return <Badge variant="default" className="bg-blue-100 text-blue-800">Blockchain Analytics</Badge>
     case 'self_reported':
@@ -190,20 +190,6 @@ const CollateralSkeleton = () => (
 
 
 export function TransparencySection({ ticker, data: propData }: TransparencySectionProps) {
-  // Enhanced debug logging to see what data we're receiving
-  console.log('🔍 TransparencySection Debug:', {
-    ticker,
-    hasData: !!propData,
-    hasCollateralData: !!propData?.collateral_data,
-    collateralAllocationsCount: propData?.collateral_data?.collateral_allocations?.length || 0,
-    collateralData: propData?.collateral_data ? {
-      totalAssets: propData.collateral_data.total_assets,
-      totalLiabilities: propData.collateral_data.total_liabilities,
-      confidence: propData.collateral_data.confidence,
-      allocationsLength: propData.collateral_data.collateral_allocations?.length || 0,
-      allocations: propData.collateral_data.collateral_allocations?.slice(0, 2) // Show first 2 for debugging
-    } : null
-  })
 
   // Use real data only - no fallback to mock data
   if (!propData) {

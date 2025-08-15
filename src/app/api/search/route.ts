@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { coinGeckoService } from '@/lib/services/coingecko'
+import { coinGeckoMcpService } from '@/lib/services/coingecko-mcp-service'
 import { cacheService, cacheKeys } from '@/lib/cache'
 import { checkRateLimit } from '@/lib/rate-limit'
 import { ApiResponse, SearchResponse } from '@/lib/types'
@@ -52,9 +53,28 @@ export async function GET(request: NextRequest) {
     let coinId = await cacheService.get<string | null>(cacheKey)
 
     if (coinId === null) {
-      // Fetch from CoinGecko
+      // Enhanced search with MCP fallback
       console.log(`Searching for ${cleanQuery}`)
-      coinId = await coinGeckoService.searchStablecoin(cleanQuery)
+      
+      // Try MCP service first if available
+      if (coinGeckoMcpService.isAvailable()) {
+        console.log(`Trying MCP search for ${cleanQuery}`)
+        const mcpResult = await coinGeckoMcpService.searchCryptocurrency(cleanQuery)
+        if (mcpResult && mcpResult.id) {
+          coinId = mcpResult.id
+          console.log(`✅ MCP found ${cleanQuery}: ${coinId}`)
+        } else {
+          console.log(`❌ MCP search failed for ${cleanQuery}, falling back to REST API`)
+        }
+      }
+      
+      // Fallback to REST API if MCP didn't find anything
+      if (!coinId) {
+        coinId = await coinGeckoService.searchStablecoin(cleanQuery)
+        if (coinId) {
+          console.log(`✅ REST API found ${cleanQuery}: ${coinId}`)
+        }
+      }
       
       // Cache for 1 hour (searches can be cached for shorter time)
       await cacheService.set(cacheKey, coinId, 60 * 60)

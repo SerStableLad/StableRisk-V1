@@ -1,10 +1,11 @@
-import { TransparencyData, CollateralData, CollateralAllocation } from '@/lib/types'
+import { TransparencyData, CollateralData, CollateralAllocation, AICollateralExtractionConfig } from '@/lib/types'
 import { 
   getKnownTransparencyData, 
   isKnownStablecoin, 
   getMappingMetadata,
   isMappingDataStale,
   getKnownAttestationUrl,
+  getCanonicalSymbol,
   TRUSTED_ATTESTATION_PROVIDERS 
 } from './stablecoin-mapping-utils'
 import { cacheService } from './cache-service'
@@ -13,6 +14,8 @@ import { ApiClient } from './api-client'
 import { config } from '@/lib/config'
 import { chromium, Browser, Page } from 'playwright'
 import { UniversalTransparencyExtractor, TransparencyResult } from './universal-transparency-scraper'
+import { AICollateralExtractionService } from './ai-collateral-extraction-service'
+import { backgroundJobsClient } from '@/lib/clients/background-jobs-client'
 
 // Types for hybrid discovery
 interface DiscoveryResult {
@@ -48,6 +51,32 @@ export class TransparencyService {
   
   // Universal scraper for enhanced accuracy
   private universalExtractor = new UniversalTransparencyExtractor();
+  
+  // AI-powered collateral extraction service (lazy initialized)
+  private aiCollateralService: AICollateralExtractionService | null = null;
+
+  constructor() {
+    // AI service is now lazy-initialized only when needed
+    console.log('[TransparencyService] Initialized without AI service (lazy loading enabled)')
+  }
+
+  /**
+   * Lazy initialization of AI collateral service
+   */
+  private getAiCollateralService(): AICollateralExtractionService {
+    if (!this.aiCollateralService) {
+      console.log('[TransparencyService] Lazy initializing AI collateral service...')
+      const aiConfig: AICollateralExtractionConfig = {
+        maxCostPerExtraction: 0.50,
+        confidenceThreshold: 0.7,
+        fallbackToAI: true,
+        cacheBasedOnConfidence: true
+      };
+      
+      this.aiCollateralService = new AICollateralExtractionService(aiConfig);
+    }
+    return this.aiCollateralService;
+  }
 
   /**
    * Get basic transparency data for a stablecoin (for Tier 2)
@@ -61,8 +90,11 @@ export class TransparencyService {
     const startTime = Date.now();
     // Start performance tracking - no initial call needed
     
-    // Check cache first for Tier 2 data
-    const cacheKey = `transparency:basic:${symbol}`;
+    // Get canonical symbol first (USDT -> USDT0)
+    const canonicalSymbol = getCanonicalSymbol(symbol)
+    
+    // Check cache first for Tier 2 data (use canonical symbol for cache key)
+    const cacheKey = `transparency:basic:${canonicalSymbol}`;
     const cachedData = await cacheService.get(cacheKey) as BasicTransparencyData;
     if (cachedData) {
       console.log(`✅ Using cached basic transparency data for ${symbol}`);
@@ -72,7 +104,7 @@ export class TransparencyService {
     
     try {
       // 🏆 PRIORITY 1: Check mapping table first for known data (fastest)
-      const knownData = getKnownTransparencyData(symbol)
+      const knownData = getKnownTransparencyData(canonicalSymbol)
       if (knownData) {
         console.log(`📋 Using mapping table data for ${symbol} basic transparency`)
         console.timeEnd('BasicTransparencyData')
@@ -95,7 +127,7 @@ export class TransparencyService {
       }
 
       // Skip expensive search for known stablecoins with no transparency data
-      if (isKnownStablecoin(symbol)) {
+      if (isKnownStablecoin(canonicalSymbol)) {
         console.log(`📋 ${symbol} is in mapping table but has no transparency data - skipping expensive search`);
         console.timeEnd('BasicTransparencyData')
         
@@ -176,8 +208,11 @@ export class TransparencyService {
     // Start performance tracking
     const startTime = Date.now();
     
-    // Check cache first for Tier 3 data
-    const cacheKey = `transparency:full:${symbol}`;
+    // Get canonical symbol first (USDT -> USDT0)
+    const canonicalSymbol = getCanonicalSymbol(symbol)
+    
+    // Check cache first for Tier 3 data (use canonical symbol for cache key)
+    const cacheKey = `transparency:full:${canonicalSymbol}`;
     const cachedData = await cacheService.get(cacheKey) as TransparencyData;
     if (cachedData) {
       console.log(`✅ Using cached transparency data for ${symbol}`);
@@ -186,36 +221,105 @@ export class TransparencyService {
     
     try {
       // 🏆 PRIORITY 1: Check mapping table for known URLs (fastest URL discovery)
-      const knownData = getKnownTransparencyData(symbol)
+      const knownData = getKnownTransparencyData(canonicalSymbol)
       if (knownData && knownData.dashboard_url) {
         console.log(`📋 Found mapping table URL for ${symbol}: ${knownData.dashboard_url}`)
         
-        if (isMappingDataStale(symbol)) {
+        if (isMappingDataStale(canonicalSymbol)) {
           console.warn(`⏰ Mapping data for ${symbol} may be stale - recommend updating`)
         }
         
-        // 🚀 ENHANCED: Use universal scraper for accurate collateral data extraction
-        const metadata = getMappingMetadata(symbol);
-        const isRecentData = metadata && !isMappingDataStale(symbol);
+        // 🚀 ENHANCED: Use AI-powered collateral extraction for accurate data
+        const metadata = getMappingMetadata(canonicalSymbol);
+        const isRecentData = metadata && !isMappingDataStale(canonicalSymbol);
         
-        // Always try universal scraper for known URLs to get accurate collateral data
-        console.log(`🚀 Using universal scraper for enhanced accuracy on ${symbol}`);
+        // Schedule AI collateral extraction in background instead of blocking
+        console.log(`🚀 Scheduling background AI collateral extraction for ${symbol}`);
         
-        // Universal scraper is disabled for now
-        console.log(`🚫 Universal scraper disabled for ${symbol}`);
+        let aiCollateralData: CollateralData | null = null;
+        
+        // First, check if we have cached AI results from previous background jobs
+        try {
+          const { enhancedCacheService } = await import('./enhanced-cache-service')
+          const aiCacheKey = `ai_collateral_${canonicalSymbol.toLowerCase()}`
+          aiCollateralData = await enhancedCacheService.get('ai_analysis', aiCacheKey)
+          
+          if (aiCollateralData) {
+            console.log(`✅ Found cached AI collateral data for ${symbol} (confidence: ${aiCollateralData.confidence?.toFixed(2) || 'unknown'})`)
+          } else {
+            console.log(`📋 No cached AI collateral data for ${symbol}, will use background job results when available`)
+            
+            // Schedule background AI job for future requests (non-blocking)
+            try {
+              const { backgroundJobService } = await import('./background-job-service')
+              
+              // Only schedule if we don't have an active or recent job
+              const hasActiveJob = backgroundJobService.hasActiveJobOfType(canonicalSymbol, 'ai_collateral_extraction')
+              const hasRecentJob = backgroundJobService.hasRecentlyCompletedJob(canonicalSymbol, 'ai_collateral_extraction', 60) // 1 hour
+              
+              if (!hasActiveJob && !hasRecentJob) {
+                backgroundJobService.addJob(
+                  'ai_collateral_extraction',
+                  canonicalSymbol,
+                  {
+                    url: knownData.dashboard_url,
+                    symbol: symbol
+                  },
+                  'low' // Low priority to preserve budget
+                )
+                console.log(`🎯 Scheduled background AI collateral extraction for ${symbol}`)
+              } else {
+                console.log(`⏭️ Skipping AI job scheduling for ${symbol} - job already active or recent`)
+              }
+            } catch (jobError) {
+              console.warn(`Failed to schedule AI collateral job for ${symbol}:`, jobError)
+            }
+            
+            // Provide static fallback data for major stablecoins while AI processes in background
+            if (symbol.toUpperCase() === 'USDC') {
+              aiCollateralData = {
+                collateral_allocations: [
+                  { asset_type: 'Cash and Cash Equivalents', percentage: 90, description: 'Primary backing asset (estimated)' },
+                  { asset_type: 'Short-term U.S. Treasury Securities', percentage: 10, description: 'Government securities (estimated)' }
+                ],
+                confidence: 0.4, // Lower confidence for fallback data
+                extraction_method: 'static_fallback',
+                last_updated: new Date().toISOString()
+              };
+              console.log(`🔄 Using static fallback collateral data for ${symbol} while AI processes`)
+            }
+          }
+        } catch (cacheError) {
+          console.warn(`Error checking AI cache for ${symbol}:`, cacheError)
+        }
+        
+        console.log(`🔍 Debug info for ${symbol}:`, {
+          isRecentData,
+          hasMetadata: !!metadata,
+          isStale: isMappingDataStale(canonicalSymbol),
+          hasAiCollateralData: !!aiCollateralData,
+          aiCollateralDataType: typeof aiCollateralData
+        });
         
         if (isRecentData) {
-          console.log(`⚡ Using trusted mapping table data for ${symbol} (recent data, skipping expensive Playwright analysis)`);
+          console.log(`⚡ Using trusted mapping table data for ${symbol} (recent data, enhanced with AI if available)`);
           
           // Check for special attestation URLs (e.g., Dropbox)
-          const attestationUrl = getKnownAttestationUrl(symbol)
+          const attestationUrl = getKnownAttestationUrl(canonicalSymbol)
           
-          // Use static mapping data with high confidence
+          // Use static mapping data with high confidence, enhanced with AI collateral data
           const staticData = {
             ...knownData,
             attestation_url: attestationUrl || undefined,
+            collateral_data: aiCollateralData || knownData.collateral_data || undefined,
             confidence: 0.9 // High confidence for curated data
           }
+          
+          console.log(`📦 Final staticData for ${symbol}:`, {
+            hasCollateralData: !!staticData.collateral_data,
+            collateralAllocationsCount: staticData.collateral_data?.collateral_allocations?.length || 0,
+            confidence: staticData.collateral_data?.confidence
+          });
           
           cacheService.set(cacheKey, staticData, 24 * 60 * 60 * 1000); // 24 hours - transparency data changes rarely
           metricsService.recordApiDuration(`transparencyFull:${symbol}`, Date.now() - startTime);
@@ -232,15 +336,16 @@ export class TransparencyService {
             console.log(`✅ Successfully analyzed mapping table dashboard for ${symbol}`)
             
             // Check for special attestation URLs (e.g., Dropbox)
-            const attestationUrl = getKnownAttestationUrl(symbol)
+            const attestationUrl = getKnownAttestationUrl(canonicalSymbol)
             
-            // Merge mapping table data with live analysis
+            // Merge mapping table data with live analysis and AI collateral data
             // PRIORITY: Keep curated mapping table data, only enhance with live data where mapping is missing
             const enhancedData = {
               ...liveAnalysis,
               ...knownData, // Mapping table data takes priority
               dashboard_url: knownData.dashboard_url, // Keep the curated URL
-              attestation_url: attestationUrl || undefined // Add attestation URL if available
+              attestation_url: attestationUrl || undefined, // Add attestation URL if available
+              collateral_data: aiCollateralData || undefined // Add AI-extracted collateral data
             }
             
             // Cache the enhanced result
@@ -258,11 +363,12 @@ export class TransparencyService {
         // Fallback to mapping table data if live analysis fails
         console.log(`📋 Using static mapping table data for ${symbol} as fallback`)
         
-        // Add attestation URL to static data
-        const attestationUrl = getKnownAttestationUrl(symbol)
+        // Add attestation URL and AI collateral data to static data
+        const attestationUrl = getKnownAttestationUrl(canonicalSymbol)
         const enhancedStaticData = {
           ...knownData,
-          attestation_url: attestationUrl || undefined
+          attestation_url: attestationUrl || undefined,
+          collateral_data: aiCollateralData || undefined
         }
         
         cacheService.set(cacheKey, enhancedStaticData, 6 * 60 * 60 * 1000); // 6 hours (TIER3)
@@ -272,7 +378,7 @@ export class TransparencyService {
       }
 
       // Skip expensive search for known stablecoins with no transparency data
-      if (isKnownStablecoin(symbol)) {
+      if (isKnownStablecoin(canonicalSymbol)) {
         console.log(`📋 ${symbol} is in mapping table but has no transparency data - skipping expensive search`);
         
         const defaultData = this.getDefaultTransparencyData();
@@ -313,7 +419,8 @@ export class TransparencyService {
       metricsService.recordApiDuration(`transparencyFull:${symbol}`, Date.now() - startTime);
       
       // Final fallback to mapping table
-      const knownData = getKnownTransparencyData(symbol)
+      const canonicalSymbol = getCanonicalSymbol(symbol)
+      const knownData = getKnownTransparencyData(canonicalSymbol)
       return knownData || this.getDefaultTransparencyData()
     }
   }
@@ -1822,8 +1929,8 @@ export class TransparencyService {
         attestation_provider: dashboardData.attestationProvider !== 'unknown' ? dashboardData.attestationProvider :
                              (combinedAnalysis.attestationProvider || this.extractAttestationProvider(html) || 'Not specified'),
         last_update_date: lastUpdated,
-        // Collateral breakdown crawling is disabled
-        collateral_data: undefined
+        // AI-powered collateral extraction (now handled by background jobs)
+        collateral_data: await this.getBackgroundAiCollateralData(symbol) || undefined
       }
       
       // Validate that we found meaningful data
@@ -1867,12 +1974,53 @@ export class TransparencyService {
   }
 
   /**
-   * 💰 Extract collateral data from transparency dashboard - DISABLED
+   * Get AI collateral data from background jobs or cache
+   */
+  private async getBackgroundAiCollateralData(symbol: string): Promise<CollateralData | null> {
+    try {
+      const { enhancedCacheService } = await import('./enhanced-cache-service')
+      const canonicalSymbol = getCanonicalSymbol(symbol)
+      const aiCacheKey = `ai_collateral_${canonicalSymbol.toLowerCase()}`
+      
+      const cachedData = await enhancedCacheService.get('ai_analysis', aiCacheKey)
+      if (cachedData) {
+        console.log(`✅ Retrieved cached AI collateral data for ${symbol}`)
+        return cachedData as CollateralData
+      }
+      
+      // Check if background job has completed results
+      const { backgroundJobService } = await import('./background-job-service') 
+      const completedJob = backgroundJobService.getLatestCompletedJob(canonicalSymbol, 'ai_collateral_extraction')
+      
+      if (completedJob?.data?.collateral) {
+        console.log(`✅ Retrieved AI collateral data from completed background job for ${symbol}`)
+        return completedJob.data.collateral as CollateralData
+      }
+      
+      console.log(`📋 No AI collateral data available for ${symbol} yet`)
+      return null
+    } catch (error) {
+      console.warn(`Error getting background AI collateral data for ${symbol}:`, error)
+      return null
+    }
+  }
+
+  /**
+   * 💰 Extract collateral data using AI-powered service (legacy method, kept for compatibility)
+   * Now redirects to background job pattern
+   */
+  private async extractCollateralDataAI(url: string, symbol?: string): Promise<CollateralData | null> {
+    console.log(`🔄 Legacy AI extraction called, redirecting to background job pattern for ${symbol}`)
+    return symbol ? this.getBackgroundAiCollateralData(symbol) : null
+  }
+
+  /**
+   * 💰 Extract collateral data from transparency dashboard - LEGACY (kept for compatibility)
    * Uses both static HTML analysis and dynamic JavaScript execution
    */
   private async extractCollateralData(page: Page, html: string, url: string): Promise<CollateralData | null> {
-    console.log(`🚫 Collateral data extraction is disabled for ${url}`)
-    return null
+    // Redirect to AI-powered extraction
+    return await this.extractCollateralDataAI(url)
   }
 
   /**
@@ -1890,6 +2038,67 @@ export class TransparencyService {
       totalAssets: undefined,
       totalLiabilities: undefined,
       overcollateralizationRatio: undefined
+    }
+  }
+
+  /**
+   * Trigger background transparency analysis for a stablecoin
+   * This submits a job to analyze transparency data asynchronously
+   */
+  async triggerBackgroundTransparencyAnalysis(
+    ticker: string,
+    url: string,
+    schema?: any
+  ): Promise<string> {
+    try {
+      console.log(`[TransparencyService] Triggering background transparency analysis for ${ticker}`)
+      
+      const jobId = await backgroundJobsClient.submitTransparencyAnalysisJob(
+        ticker,
+        url,
+        schema,
+        {
+          timeout: 300000, // 5 minutes for comprehensive analysis
+          attempts: 2, // Fewer retries since analysis can be expensive
+          priority: 'medium'
+        }
+      )
+      
+      console.log(`[TransparencyService] Background transparency analysis job submitted: ${jobId}`)
+      return jobId
+    } catch (error) {
+      console.error(`[TransparencyService] Failed to trigger background analysis for ${ticker}:`, error)
+      throw error
+    }
+  }
+
+  /**
+   * Check if there's an active transparency analysis job for a ticker
+   */
+  async hasActiveTransparencyAnalysisJob(ticker: string): Promise<boolean> {
+    try {
+      const jobs = await backgroundJobsClient.queryJobs({
+        type: 'analyze-transparency',
+        status: ['pending', 'processing', 'delayed'],
+        limit: 50
+      })
+      
+      return jobs.some(job => job.data?.ticker === ticker)
+    } catch (error) {
+      console.warn(`[TransparencyService] Failed to check active transparency jobs for ${ticker}:`, error)
+      return false
+    }
+  }
+
+  /**
+   * Get the status of a background transparency analysis job
+   */
+  async getTransparencyAnalysisJobStatus(jobId: string) {
+    try {
+      return await backgroundJobsClient.getJobStatus(jobId)
+    } catch (error) {
+      console.error(`[TransparencyService] Failed to get transparency job status for ${jobId}:`, error)
+      return null
     }
   }
 

@@ -56,7 +56,7 @@ export default function HomePage() {
       <div className="mt-16 text-center space-y-4">
         <h3 className="text-xl font-semibold">Trusted Data Sources</h3>
         <p className="text-sm text-muted-foreground max-w-2xl mx-auto">
-          We aggregate data from CoinGecko, CoinMarketCap, DeFiLlama, GeckoTerminal, 
+          We aggregate data from CoinGecko, GeckoTerminal DEX analytics, 
           official project documentation, and GitHub repositories to provide 
           comprehensive and accurate risk assessments.
         </p>

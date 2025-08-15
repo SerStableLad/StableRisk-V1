@@ -255,11 +255,7 @@ async function DashboardContent({ ticker }: { ticker: string }) {
           value: assessment.audits[0]?.date ? new Date(assessment.audits[0].date).toLocaleDateString() : 'Unknown',
           isGood: assessment.audits[0]?.date ? (Date.now() - new Date(assessment.audits[0].date).getTime()) < (180 * 24 * 60 * 60 * 1000) : false // Within 6 months
         }] : []),
-        ...(assessment.audits?.length && assessment.audits[0]?.firm ? [{
-          label: 'Primary Auditor', 
-          value: assessment.audits[0].firm,
-          isGood: true
-        }] : [])
+        // Remove audit firm name display
       ]
     }
   }
@@ -349,7 +345,7 @@ async function DashboardContent({ ticker }: { ticker: string }) {
               last_update_date: assessment.transparency.last_update_date || new Date().toISOString().split('T')[0],
               proof_of_reserves_score: assessment.risk_scores?.transparency || 0,
               attestation_providers: assessment.transparency.attestation_provider ? [{
-                name: assessment.transparency.attestation_provider,
+                name: 'Third-Party Auditor', // Remove specific provider name
                 type: 'audit_firm' as const,
                 reputation_score: 8.5,
                 last_report_date: assessment.transparency.last_update_date || new Date().toISOString().split('T')[0],
@@ -436,7 +432,7 @@ async function DashboardContent({ ticker }: { ticker: string }) {
             ticker={ticker} 
             data={assessment.audits?.length ? {
               recent_audits: assessment.audits.map((audit: any) => ({
-                firm_name: audit.firm,
+                firm_name: 'Audit Firm', // Remove specific firm name
                 audit_type: 'comprehensive' as const,
                 audit_date: audit.date,
                 report_url: audit.report_url,

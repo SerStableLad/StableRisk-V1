@@ -4,6 +4,7 @@ interface RequestOptions {
   method?: 'GET' | 'POST' | 'PUT' | 'DELETE'
   headers?: Record<string, string>
   params?: Record<string, string | number>
+  body?: string
   timeout?: number
   retries?: number
 }
@@ -49,6 +50,7 @@ export class ApiClient {
       method = 'GET',
       headers = {},
       params,
+      body,
       timeout = this.timeout,
       retries = 2
     } = options
@@ -58,6 +60,9 @@ export class ApiClient {
 
     console.log(`[ApiClient] Making ${method} request to: ${url}`)
     console.log(`[ApiClient] Headers:`, requestHeaders)
+    if (body) {
+      console.log(`[ApiClient] Request body:`, body.substring(0, 200) + (body.length > 200 ? '...' : ''))
+    }
 
     // Create AbortController for timeout
     const controller = new AbortController()
@@ -70,11 +75,17 @@ export class ApiClient {
       try {
         console.log(`[ApiClient] Attempt ${attempt + 1}/${retries + 1}`)
         
-        const response = await fetch(url, {
+        const fetchOptions: RequestInit = {
           method,
           headers: requestHeaders,
           signal: controller.signal,
-        })
+        }
+        
+        if (body && (method === 'POST' || method === 'PUT')) {
+          fetchOptions.body = body
+        }
+        
+        const response = await fetch(url, fetchOptions)
 
         clearTimeout(timeoutId)
         
@@ -83,7 +94,18 @@ export class ApiClient {
         if (!response.ok) {
           const errorText = await response.text()
           console.log(`[ApiClient] Error response body:`, errorText)
-          throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+          
+          // Try to parse error as JSON for better error details
+          let errorDetails = errorText
+          try {
+            const errorJson = JSON.parse(errorText)
+            errorDetails = JSON.stringify(errorJson, null, 2)
+            console.log(`[ApiClient] Parsed error JSON:`, errorJson)
+          } catch {
+            // Not JSON, use raw text
+          }
+          
+          throw new Error(`HTTP ${response.status}: ${response.statusText} - ${errorDetails}`)
         }
 
         const data = await response.json()
@@ -157,6 +179,7 @@ export class ApiClient {
       ...options,
       method: 'POST',
       headers,
+      body: JSON.stringify(body),
     })
     
     return response.data

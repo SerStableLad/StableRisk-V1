@@ -93,7 +93,17 @@ interface LiquidityData {
     liquidity: number
     percentage: number
   }>
-
+  // Add historical TVL data for Phase 2 chart
+  historical_tvl?: Array<{
+    chain: string
+    data: Array<{
+      timestamp: number
+      date: string
+      tvl: number
+      chain: string
+    }>
+    color: string
+  }>
   last_liquidity_crisis?: {
     date: string
     description: string

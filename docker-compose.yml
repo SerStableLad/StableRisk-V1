@@ -1,0 +1,84 @@
+version: '3.8'
+
+services:
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf
+      - ./nginx/logs:/var/log/nginx
+    depends_on:
+      - postgres
+      - metrics-service
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/nginx-health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - stablerisk-network
+
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: stablerisk
+      POSTGRES_USER: ${DB_USER:-stablerisk_user}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-your_secure_password_here}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./sql/init:/docker-entrypoint-initdb.d
+      - ./metrics-service/sql:/docker-entrypoint-initdb.d/metrics
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-stablerisk_user} -d stablerisk"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - stablerisk-network
+
+  metrics-service:
+    build: ./metrics-service
+    ports:
+      - "3001:3001"
+    environment:
+      - PORT=3001
+      - NODE_ENV=${NODE_ENV:-development}
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=stablerisk
+      - DB_USER=${DB_USER:-stablerisk_user}
+      - DB_PASSWORD=${DB_PASSWORD:-your_secure_password_here}
+      - DB_SSL=false
+      - DB_POOL_MIN=5
+      - DB_POOL_MAX=20
+      - DB_QUERY_TIMEOUT=10000
+      - REQUEST_TIMEOUT=30000
+      - ALLOWED_ORIGINS=http://localhost:3000,http://localhost
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/health/live"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
+    volumes:
+      - ./metrics-service/logs:/app/logs
+    networks:
+      - stablerisk-network
+
+volumes:
+  postgres_data:
+    driver: local
+
+networks:
+  stablerisk-network:
+    driver: bridge

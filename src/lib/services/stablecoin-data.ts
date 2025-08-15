@@ -1,5 +1,4 @@
 import { coinGeckoService } from './coingecko'
-import { coinMarketCapService } from './coinmarketcap'
 import { transparencyService } from './transparency'
 import { geckoTerminalService } from './geckoterminal'
 // import { oracleAnalysisService } from './oracle-analysis' // Disabled oracle functionality
@@ -17,10 +16,10 @@ import {
 } from './stablecoin-mapping-utils'
 import { ApiClient } from './api-client'
 import { config } from '@/lib/config'
-import { AuditDiscoveryService } from './audit-discovery'
+import { universalCollateralOrchestrator } from './universal-collateral-orchestrator'
+import { backgroundJobsClient } from '@/lib/clients/background-jobs-client'
 
 export class StablecoinDataService {
-  private auditDiscoveryService = new AuditDiscoveryService()
   
   /**
    * STRICT validation to check if a token is a stablecoin
@@ -120,10 +119,10 @@ export class StablecoinDataService {
         console.log(generateMappingEntryString(newEntry))
       }
 
-      // Step 4, 5, 6 & 7: Get transparency, audit, oracle, and liquidity data in parallel (OPTIMIZATION 2)
-      console.log('🚀 Starting parallel transparency, audit, oracle, and liquidity discovery...')
+      // Step 4, 5, 6, 7 & 8: Get transparency, audit, oracle, liquidity, and collateral data in parallel (OPTIMIZATION 2)
+      console.log('🚀 Starting parallel transparency, audit, oracle, liquidity, and collateral discovery...')
       
-      const [transparency, audits, oracle, liquidity] = await Promise.all([
+      const [transparency, audits, oracle, liquidity, collateralDiscovery] = await Promise.all([
         // Transparency data promise
         (async () => {
           let transparencyData: any = {
@@ -178,30 +177,36 @@ export class StablecoinDataService {
           return transparencyData
         })(),
         
-        // Audit data promise
+        // Audit data promise - DISABLED
         (async () => {
-          console.log('Getting audit data...')
-          let auditData: any[] = []
-          
-          // Use audit discovery service for all stablecoins
-          const auditFolderUrl = getKnownAuditFolderUrl(ticker)
-          if (auditFolderUrl) {
-            console.log(`🔍 Discovering audits for ${ticker} from: ${auditFolderUrl}`)
-            const discoveredAudits = await this.auditDiscoveryService.discoverAudits(ticker, info?.name, [], [auditFolderUrl])
-            auditData = discoveredAudits || [] // Ensure we always have an array
-            console.log(`📋 Found ${auditData.length} audits for ${ticker}`)
-          } else {
-            console.log(`📋 No audit folder URL found for ${ticker}`)
-          }
-          
-          return auditData
+          console.log('Audit discovery disabled - returning empty array')
+          return []
         })(),
         
         // Oracle data promise
         this.getEnhancedOracleData(info),
         
         // Liquidity data promise
-        this.getEnhancedLiquidityData(info, ticker)
+        this.getEnhancedLiquidityData(info, ticker),
+        
+        // Collateral discovery promise (NEW - Universal Collateral Discovery System)
+        (async () => {
+          try {
+            console.log(`🔍 Starting comprehensive collateral discovery for ${ticker}`)
+            const collateralResult = await universalCollateralOrchestrator.discoverCollateralData(info)
+            
+            if (collateralResult.primary_result && collateralResult.primary_result.confidence > 0) {
+              console.log(`✅ Collateral discovery successful for ${ticker} - confidence: ${collateralResult.final_confidence}, tier: ${collateralResult.primary_result.source_tier}`)
+              return collateralResult
+            } else {
+              console.log(`📊 No reliable collateral data found for ${ticker}`)
+              return null
+            }
+          } catch (error) {
+            console.warn(`⚠️ Collateral discovery failed for ${ticker}:`, error)
+            return null
+          }
+        })()
       ])
       
       // Calculate basic risk factors based on available data
@@ -273,6 +278,15 @@ export class StablecoinDataService {
       // Add data source tracking
       if (audits.length > 0) dataSources.push('GitHub')
       if (transparency.dashboard_url) dataSources.push('Transparency APIs')
+      if (collateralDiscovery) {
+        dataSources.push(`Collateral Discovery (Tier ${collateralDiscovery.primary_result.source_tier})`)
+      }
+
+      // Enhance transparency data with collateral information if available
+      const enhancedTransparency = {
+        ...transparency,
+        collateral_data: collateralDiscovery?.primary_result?.data || undefined
+      }
 
       const assessment = {
         info,
@@ -293,9 +307,21 @@ export class StablecoinDataService {
           last_depeg_date: pegAnalysis.lastDepegDate,
         },
         audits,
-        transparency,
+        transparency: enhancedTransparency,
         oracle,
         liquidity,
+        // Add collateral data at the top level for easy access
+        collateral_data: collateralDiscovery?.primary_result?.data || undefined,
+        // NEW: Add comprehensive collateral discovery data for debugging and metadata
+        collateral_discovery: collateralDiscovery ? {
+          primary_result: collateralDiscovery.primary_result,
+          final_confidence: collateralDiscovery.final_confidence,
+          discovery_tier: collateralDiscovery.primary_result.source_tier,
+          discovery_method: collateralDiscovery.primary_result.discovery_method,
+          total_cost_usd: collateralDiscovery.total_cost_usd,
+          quality_assurance: collateralDiscovery.quality_assurance,
+          fallback_results: collateralDiscovery.fallback_results.length > 0 ? collateralDiscovery.fallback_results : undefined
+        } : null,
         last_updated: new Date().toISOString(),
         data_sources: dataSources,
       }
@@ -547,16 +573,25 @@ export class StablecoinDataService {
       priceHistory, 
       audits, 
       transparency,
-      liquidity
+      liquidity,
+      collateralDiscovery
     ] = await Promise.all([
       this.getPriceHistory(fullInfo.id),
-      this.auditDiscoveryService.discoverAudits(ticker, fullInfo.name, fullInfo.official_links?.github_repos, fullInfo.official_links?.homepage),
+      Promise.resolve([]), // Audit discovery disabled
       transparencyService.getTransparencyData(ticker, fullInfo.name, fullInfo.official_links?.homepage),
-      this.getEnhancedLiquidityData(fullInfo, ticker)
+      this.getEnhancedLiquidityData(fullInfo, ticker),
+      // Add collateral discovery to Tier 3 
+      universalCollateralOrchestrator.discoverCollateralData(fullInfo).catch(() => null)
     ]);
     
     const fullPegAnalysis = this.analyzePegStability(priceHistory);
     const riskFactors = await this.calculateRiskFactors(fullInfo, priceHistory, fullInfo.id, ticker);
+    
+    // Enhance transparency data with collateral information if available
+    const enhancedTransparency = {
+      ...transparency,
+      collateral_data: collateralDiscovery?.primary_result?.data || undefined
+    }
     
     const tier3Data: StablecoinTier3Data = {
       tier: 3,
@@ -568,7 +603,7 @@ export class StablecoinDataService {
         is_depegged: fullPegAnalysis.isCurrentlyDepegged,
         last_depeg_date: fullPegAnalysis.lastDepegDate,
       },
-      full_transparency: transparency,
+      full_transparency: enhancedTransparency,
       liquidity,
       audits,
       complete_risk_scores: {
@@ -578,7 +613,18 @@ export class StablecoinDataService {
         liquidity: riskFactors.liquidity.score,
         audit: riskFactors.audit_status.score,
       },
-      data_sources: ['CoinGecko', 'GitHub', 'Transparency APIs']
+      // Add collateral discovery to Tier 3 data for debugging and metadata
+      collateral_discovery: collateralDiscovery ? {
+        primary_result: collateralDiscovery.primary_result,
+        final_confidence: collateralDiscovery.final_confidence,
+        discovery_tier: collateralDiscovery.primary_result.source_tier,
+        discovery_method: collateralDiscovery.primary_result.discovery_method,
+        total_cost_usd: collateralDiscovery.total_cost_usd,
+        quality_assurance: collateralDiscovery.quality_assurance
+      } : null,
+      data_sources: collateralDiscovery ? 
+        ['CoinGecko', 'GitHub', 'Transparency APIs', `Collateral Discovery (Tier ${collateralDiscovery.primary_result.source_tier})`] :
+        ['CoinGecko', 'GitHub', 'Transparency APIs']
     };
     
     console.timeEnd('Tier3-Performance');
@@ -1413,6 +1459,131 @@ export class StablecoinDataService {
       avgRecoveryTime,
       isCurrentlyDepegged,
       lastDepegDate
+    }
+  }
+
+  /**
+   * Trigger background data collection for a stablecoin
+   * This method submits a job to collect comprehensive stablecoin data asynchronously
+   */
+  async triggerBackgroundDataCollection(
+    ticker: string, 
+    sources: string[] = ['coingecko', 'geckoterminal', 'transparency'],
+    urgent: boolean = false
+  ): Promise<string> {
+    try {
+      console.log(`[StablecoinDataService] Triggering background data collection for ${ticker}`)
+      
+      const jobId = await backgroundJobsClient.submitStablecoinDataJob(
+        ticker,
+        sources,
+        urgent,
+        {
+          timeout: 300000, // 5 minutes timeout for comprehensive data collection
+          attempts: 3
+        }
+      )
+      
+      console.log(`[StablecoinDataService] Background data collection job submitted: ${jobId}`)
+      return jobId
+    } catch (error) {
+      console.error(`[StablecoinDataService] Failed to trigger background collection for ${ticker}:`, error)
+      throw error
+    }
+  }
+
+  /**
+   * Check if there's a background data collection job running for a ticker
+   */
+  async hasActiveDataCollectionJob(ticker: string): Promise<boolean> {
+    try {
+      const jobs = await backgroundJobsClient.queryJobs({
+        type: 'collect-stablecoin-data',
+        status: ['pending', 'processing', 'delayed'],
+        limit: 50
+      })
+      
+      return jobs.some(job => job.data?.ticker === ticker)
+    } catch (error) {
+      console.warn(`[StablecoinDataService] Failed to check active jobs for ${ticker}:`, error)
+      return false
+    }
+  }
+
+  /**
+   * Get the status of a background data collection job
+   */
+  async getDataCollectionJobStatus(jobId: string) {
+    try {
+      return await backgroundJobsClient.getJobStatus(jobId)
+    } catch (error) {
+      console.error(`[StablecoinDataService] Failed to get job status for ${jobId}:`, error)
+      return null
+    }
+  }
+
+  /**
+   * Enhanced method that checks for cached data or triggers background collection
+   * Returns cached data immediately if available, otherwise triggers background job
+   * and returns basic data with a job ID for polling
+   */
+  async getStablecoinAssessmentWithBackgroundFallback(ticker: string): Promise<{
+    assessment: StablecoinAssessment | null
+    backgroundJobId?: string
+    isFromCache: boolean
+    isBackgroundJobRunning?: boolean
+  }> {
+    // First check cache
+    const cachedData = await enhancedCacheService.get<StablecoinAssessment>('assessment', ticker)
+    if (cachedData) {
+      return {
+        assessment: cachedData,
+        isFromCache: true
+      }
+    }
+
+    // Check if there's already a background job running
+    const hasActiveJob = await this.hasActiveDataCollectionJob(ticker)
+    if (hasActiveJob) {
+      return {
+        assessment: null,
+        isFromCache: false,
+        isBackgroundJobRunning: true
+      }
+    }
+
+    // Try to get data synchronously first (fast path)
+    try {
+      const assessment = await Promise.race([
+        this.getStablecoinAssessment(ticker),
+        new Promise<null>((_, reject) => setTimeout(() => reject(new Error('Sync timeout')), 10000))
+      ])
+      
+      if (assessment) {
+        return {
+          assessment,
+          isFromCache: false
+        }
+      }
+    } catch (error) {
+      console.log(`[StablecoinDataService] Sync data fetch failed/timed out for ${ticker}, triggering background job`)
+    }
+
+    // Fallback to background job
+    try {
+      const backgroundJobId = await this.triggerBackgroundDataCollection(ticker, undefined, false)
+      return {
+        assessment: null,
+        backgroundJobId,
+        isFromCache: false,
+        isBackgroundJobRunning: true
+      }
+    } catch (error) {
+      console.error(`[StablecoinDataService] Failed to trigger background job for ${ticker}:`, error)
+      return {
+        assessment: null,
+        isFromCache: false
+      }
     }
   }
 }

@@ -1,3 +1,10 @@
+/**
+ * ⚠️ AUDIT DISCOVERY SERVICE - DISABLED ⚠️
+ * 
+ * This service has been completely disabled and should not be used.
+ * All audit discovery functionality is turned off.
+ */
+
 import { ApiClient } from './api-client'
 import { config } from '../config'
 import { AuditInfo } from '../types'
@@ -2004,5 +2011,5 @@ export class AuditDiscoveryService {
   }
 }
 
-// Export both the class and the singleton instance
-export const auditDiscoveryService = new AuditDiscoveryService(); 
+// Export both the class and the singleton instance - DISABLED
+// export const auditDiscoveryService = new AuditDiscoveryService(); 
